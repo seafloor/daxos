@@ -1,2 +1,2 @@
-# Dask AND XGBoost on SNPs
+# Dask And XGBoost On SNPs (DAXOS)
  
