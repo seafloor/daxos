@@ -8,7 +8,7 @@ DAXOS is a Python library designed to efficiently run Dask and XGBoost on SNP da
 - **XGBoost integration:** Leverages the power of XGBoost for fast and scalable machine learning. All the core work is done using XGB on dask arrays.
 - **HPC optimization:** Designed specifically for HPC environments. If you're working on AWS or a personal computer then there are probably better workflows. If you're on SLURM HPC system with moderate memory per node then daxos should be helpful.
 - **PLINK to HDF5 conversion:** Includes convenience functions to convert PLINK files to HDF5 format. This includes making sure the ref allele is the same across train/test splits, low-memory pre-shuffling and processing with numpy.
-- **Covariate adjustment:** Functions for adjusting covariates in genetic data before and after analysis. This includes genome-wide adjustment as has been advised for random forests, and a post-modelling adjustment for the non-linear effect of confounders.
+- **Covariate adjustment:** Functions for adjusting covariates in genetic data before and after analysis. This includes genome-wide adjustment as has been advised for random forests (1), and a post-modelling adjustment for the non-linear effect of confounders.
 - **Cross-validation, refitting and prediction:** Support for model cross-validation, refitting, and prediction, and explanation through SHAP values. The latter uses the SHAP "prediction" built in to the python XGB API. Prediction in the test set can run Platt scaling (correctly implemented using the CV test chunk predictions).
 
 ## Installation
@@ -68,7 +68,7 @@ The good thing it does have is something that prints the node and tunneling comm
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request on GitHub. Note that this is adapted from code used in the paper "Machine learning in Alzheimer's Genetics". To ensure nothing related to private genetic data or files was transferred to a public repo it was rewritten. Flagging issues is very welcome as they likely just got lost in the transfer.
+Contributions are welcome! Please open an issue or submit a pull request on GitHub. Note that this is adapted from code used in the paper "Machine learning in Alzheimer's Genetics" (2). To ensure nothing related to private genetic data or files was transferred to a public repo it was rewritten. Flagging issues is very welcome as they likely just got lost in the transfer.
 
 ## License
 
