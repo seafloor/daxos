@@ -4,7 +4,7 @@ DAXOS is a Python library designed to efficiently run Dask and XGBoost on SNP da
 
 ## Features
 
-- **Memory-efficient processing:** Utilizes Dask to handle large datasets with reduced memory usage. This includes *lots* of optimisations like pre-shuffling and chunking for dask, and custom load balancing, as by default dask is unaware of how much memory XGB will use and loads too many chunks on a given worker, using in-place prediction where optimal, a custom CV function to unsure data is only given to a worker once etc.
+- **Memory-efficient processing:** Utilizes Dask to handle large datasets with reduced memory usage. This includes *lots* of optimisations like pre-shuffling and chunking for dask, and custom load balancing, as by default dask is unaware of how much memory XGB will use and loads too many chunks on a given worker, using in-place prediction where optimal, a custom CV function to minimise data movement to/from workers
 - **XGBoost integration:** Leverages the power of XGBoost for fast and scalable machine learning. All the core work is done using XGB on dask arrays.
 - **HPC optimization:** Designed specifically for HPC environments. If you're working on AWS or a personal computer then there are probably better workflows. If you're on SLURM HPC system with moderate memory per node then daxos should be helpful.
 - **PLINK to HDF5 conversion:** Includes convenience functions to convert PLINK files to HDF5 format. This includes making sure the ref allele is the same across train/test splits, low-memory pre-shuffling and processing with numpy.
