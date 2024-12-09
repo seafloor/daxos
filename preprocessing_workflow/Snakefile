@@ -6,7 +6,6 @@ localrules: download_plink
 PGEN_EXT = ["pgen", "pvar", "psam", "log"]
 BED_EXT = ["bed", "bim", "fam", "log"]
 RAW_EXT = ["raw", "log"]
-SPLIT_OUTPUT = config.get("output", {}).get("split", False)
 IN_FILE = os.path.basename(config.get("input", {}).get("data", ""))
 
 rule all:
@@ -39,16 +38,74 @@ rule download_plink:
         chmod +x bin/plink2
         """
 
-rule convert_plink_to_raw:
+rule filter_maf:
     input:
         "bin/plink2",
         expand("{inpath}.{ext}", inpath=config["input"]["data"], ext=PGEN_EXT if config['input']['file_type'] == 'pfile' else BED_EXT)
     params:
-        infile=f"{config['input']['data']}",
+        infile=config['input']['data'],
+        maf=config['qc']['maf'],
+        outpath=f"{config['input']['data']}_maf005",
+        tool=config['input']['tool'],
+        file_type=config['input']['file_type'],
+        overlap_ids=config['qc']['overlap_ids']
+    output:
+        temp(expand("{outpath}_maf005.{ext}", outpath=config['input']['data'], ext=BED_EXT))
+    threads:
+        config["run"]["threads"]
+    shell:
+        """
+        {params.tool} \
+            --{params.file_type} {params.infile} \
+            --maf {params.maf} \
+            --remove {params.overlap_ids} \
+            --make-bed \
+            --out {params.outfile}
+        """
+
+rule clump_files:
+    input:
+    params:
+        infile=f"{config['input']['data']}_maf005",
+        sumstats=config['qc']['sumstats'],
+        clump_field=config['qc']['clump_field'],
+        clump_kb=config['qc']['clump_kb']
+        clump_p1=config['qc']['clump_p1'],
+        clump_p2=config['qc']['clump_p2'],
+        clump_r2=config['qc']['clump_r2'],
+        clump_snp_field=config['qc']['clump_snp_field'],
+        outfile=f"{config['output']['dir']}/maf005_clumped"
+    output:
+    threads:
+    shell:
+        """
+        {params.tool} \
+            --bfile {params.infile} \
+            --clump {params.sumstats} \
+            --clump-field {params.clump_field} \
+            --clump-kb {params.clump_kb} \
+            --clump-p1 {params.clump_p1} \
+            --clump-p2 {params.clump_p2} \
+            --clump-r2 {params.clump_r2} \
+            --clump-snp-field {params.clump_snp_field} \
+            --out {params.outfile}
+
+        # awk the snp column
+        """
+
+rule filtering_by_clumping:
+    # output is the final _qcd file
+    # need to check this is all okay on a single 1-22 file or if these need to be sent off as batch jobs
+
+rule convert_plink_to_raw:
+    input:
+        "bin/plink2",
+        expand("{inpath}_qcd.{ext}", inpath=config["input"]["data"], ext=BED_EXT)
+    params:
+        infile=f"{config['input']['data']}_qcd",
         allelefile=f"{config['input']['allele_file']}",
         outfile=f"{config['output']['dir']}/tmp/{IN_FILE}",
-        tool=config['input']['tool'],
-        file_type=config['input']['file_type']
+        tool=config['input']['tool']
     output:
         temp(
             expand(
@@ -63,7 +120,7 @@ rule convert_plink_to_raw:
     shell:
         """
         {params.tool} \
-            --{params.file_type} {params.infile} \
+            --bfile {params.infile} \
             --recode A \
             --recode-allele {params.allelefile} \
             --out {params.outfile}
@@ -199,14 +256,14 @@ rule split_hdf5_file:
 rule split_plink_file:
     input:
         "bin/plink2",
-        expand("{inpath}.{ext}", inpath=config["input"]["data"], ext=PGEN_EXT if config['input']['file_type'] == 'pfile' else BED_EXT),
+        expand("{inpath}.{ext}", inpath=config["input"]["data"], ext=BED_EXT),
         f"{config['output']['dir']}/train/train_ids_plinkformat.txt",
         f"{config['output']['dir']}/test/test_ids_plinkformat.txt"
     params:
         infile=f"{config['input']['data']}",
         tool=config['input']['tool'],
         file_type=config['input']['file_type'],
-        write_type='make-pgen' if config['output']['file_type'] == 'pfile' else 'make-bed',
+        write_type='make-bed',
         train_ids=f"{config['output']['dir']}/train/train_ids_plinkformat.txt",
         test_ids=f"{config['output']['dir']}/test/test_ids_plinkformat.txt",
         train_outfile=f"{config['output']['dir']}/train/{IN_FILE}_shuffled_train",
@@ -217,7 +274,7 @@ rule split_plink_file:
             outdir=config['output']['dir'],
             split=["train", "test"],
             infile=IN_FILE,
-            ext=PGEN_EXT if config['input']['file_type'] == 'pfile' else BED_EXT
+            ext=BED_EXT
         )
     threads:
         config["run"]["threads"]

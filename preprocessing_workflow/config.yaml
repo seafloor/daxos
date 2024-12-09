@@ -1,0 +1,36 @@
+input:
+  data: "/home/matthew.smith/workdir2024/data_freeze/plink_files/maf_0_05/clumped_r2_0_75/test/plink/eadb_maf_0_05_clumped_r2_0_75_test_allchr_JUST_APOE" # plink file name without extension
+  tool: "bin/plink2"
+  file_type: "bfile" # options: pfile or bfile
+  chunk_size: 5000 # size of chunks of plink raw file to read in with numpy
+  allele_file: "/home/matthew.smith/workdir2024/Kunkle_etal_Stage1_results_grc38_nodup_noambig_nomiss_recode_fixed.txt" # allele file of 'snp allele' on each row e.g. rs7412 T
+  covar_file: "/home/matthew.smith/workdir2024/covar_files/covars_no_age_with_sex_no_center_no_gwssnp_for_ml.txt" # standard plink-accepted tab-delimited covariate file
+
+qc:
+  maf: 0.05
+  overlap_ids: "/workdir/matthew.smith/data_freeze/id_lists/kunkle_overlap_to_exclude.txt"
+  missing_sex: ""
+  sumstats: "/workdir/matthew.smith/Kunkle_etal_Stage1_results.txt"
+  clump_field: "Pvalue"
+  clump_kb: 1000
+  clump_p1: 1
+  clump_p2: 1
+  clump_r2: 0.75
+  clump_snp_field: "MarkerName"
+
+output:
+  dir: "/home/matthew.smith/plink_to_hdf5/results"
+  p_split: 0.7 # fraction of data to allocate to train split
+  chunk_size: 100 # size of row chunks for dask
+  dtype: "float16" # options: float16, float32, float64
+  file_type: "bfile" # only applies to the train/test splits, which should be bed/bim/fam for most ML software
+  
+run:
+  threads: 1
+  seed: 123
+  standardise_covariates: "True"
+
+env:
+  plink_url: "https://s3.amazonaws.com/plink2-assets/alpha6/plink2_linux_avx2_20241114.zip" # linux 64-bit
+  conda_module: "conda/23.11-py311" # to be loaded with `module load conda_module`
+  job_env: "plink2hdf5"

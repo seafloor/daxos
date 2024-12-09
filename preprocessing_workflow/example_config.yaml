@@ -6,6 +6,12 @@ input:
   allele_file: "/your/allele/file" # allele file of 'snp allele' on each row e.g. rs7412 T
   covar_file: "/your/covar/file" # standard plink-accepted tab-delimited covariate file
 
+qc:
+  maf: 0.05 # set threshold
+  overlap_ids: "/your/id/file" # to exclude overlap with clumping data
+  missing_sex: "/your/id/file" # to exclude other samples missing sex or for other reason
+  sumstats: "/your/sumstats" # for clumping
+
 output:
   dir: "/your/output/dir"
   p_split: 0.7 # fraction of data to allocate to train split
