@@ -37,25 +37,27 @@ cp example_config.yaml config.yaml
 vim config.yaml # add your own paths etc.
 ```
 
-# Running
+## Running
 
-## Check a dry run to see the workflow:
+### Check a dry run to see the workflow:
 ```
 snakemake -np --cores 1 --jobs 1
 ```
 
-## Run the full workflow on slurm
-# make sure config.yaml exists and is correct first!
+### Run the full workflow on slurm
+
+Make sure config.yaml exists and is correct first!
+
 ```
 snakemake -p --cores 1 --executor slurm --workflow-profile profiles/slurm --jobs 1
 ```
 
-# Debugging possible conda fixes
+## Debugging possible conda fixes
 Some systems have issues with the conda version not being found by snakemake. You make need to run the lines below to fix this.
 ```
 ~/.conda/envs/snakemake/bin/conda init
 source ~/.bashrc
 ```
 
-# License and contributions
+## License and contributions
 See the root daxos readme for these.
