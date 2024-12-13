@@ -1,0 +1,18 @@
+# basic setup
+
+# handle logic for argument checking from config file
+
+# make sure the actual /tmp files are specified as temp so they are cleaned up at the end
+# include the dummy data early on so we can iterate on tests faster than before
+
+rule run_hyperparameter_search:
+    # to contain the equiv. of the cv if state from daxg
+    # needs something to keep re-submitting when it fails an pickup on the next one
+    # can prob be done by defining enough output files and stating re-submit on failure?
+
+rule run_model_refit:
+    # will refit after CV
+    # needs to require files from hp search
+
+rule run_predict:
+    # will predict after refit

@@ -1,0 +1,60 @@
+input:
+  data:
+    train: "/your/train/data.hdf5"
+    test: "/your/test/data.hdf5"
+# set default arguments for when args are not passed
+
+# ??? aim to rewrite this so all intermediate paths are relative to a single output directory
+
+output: # ??? this is a mess - sort to single output folder
+  data: ${out}/job_${SLURM_JOB_ID}_${prefix} # ??? see if I can do this - probably not
+  prefix: "testing_something" # run name to append to output folder ??? fix up so I create a single output dir for everything to reference
+  basedir: "" # maybe not necessary
+  out: "/home/matthew.smith/workdir2024/xgboost/my_run_name"
+  tmp: # ??? need a default
+  
+# ??? move worker req. to slurm yaml config or won't work?
+cv:
+  folds: 5 # n folds in CV
+  iter: 50 # n iterations random search in CV
+  time: "'04_00_00'" # time per worker as HH_MM_SS
+  mem: "'32G'" # mem per worker as G
+  workers: 4 # n workers
+  cvsubsample: 5000 # size of train data to take as subsample for HP search
+  hyperparams: None # ???
+  hp_round: 0 # ??? which round of HP tuning we're on - may be redundant with snakemake
+
+refit: # resources must cover total of 640G RAM for 28k*215k train set
+  time: "'20_00_00'" 
+  mem: "'50G'"
+  workers: 13
+  hyperparams: "path/to/hp/file" # path to file or directors with output from HP search
+
+predict:
+  bst: "/path/to/booster.json" # path to prefit serialised boosting model to use for predictions
+  bstcols: "path/to/booster/columns.txt" # file containing column names from model in bst
+
+jobs: # holds universal rules for runs
+  cpu_threads: 5
+  dask_row_chunks: 500 # size of chunks to read with dask
+  interface: None # can manually try to force ethernet, infiniband etc.
+  worker_queue: None # can manually try to force worker queue
+  xkey: 'x' # key for accessing predictors in hdf5 files
+  ykey: 'y' # key for accessing outcome in hdf5 files
+
+model: # holds universal rules for xgb models
+  subsample: 0.7 # size of subsample for each tree in boosting rounds
+  boosters: 1000 # number of boosting rounds
+  run_shap_inter: False # if True then export SHAP interaction values - v. high mem req. and some concurrency issues seen
+  xgb_model_type: "shap" # ??? presume this is how to extract importance scores?
+
+envs: # ??? dropped server in place of this. Check if need to do any sourcing with this or not
+  module: "conda/1/2" # your base conda module to load on an HPC environment
+  env: "daxos" # your environement to load for runs. Should be base daxos env from daxos/requirements.yaml. 
+
+run: # ??? ultimately remove these so it's dependent on the pipeline in the snakefile
+  seed: 123
+  gpu: False # if true run all training on GPU. NOT IMPLEMENTED.
+  cv: False
+  refit: False
+  predict: False

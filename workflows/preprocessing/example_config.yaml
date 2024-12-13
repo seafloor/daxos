@@ -1,0 +1,37 @@
+input:
+  data: "/your/plink/file" # plink file name without extension
+  tool: "bin/plink2"
+  file_type: "bfile" # options: pfile or bfile
+  chunk_size: 5000 # size of chunks of plink raw file to read in with numpy
+  allele_file: "/your/allele/file" # allele file of 'snp allele' on each row e.g. rs7412 T
+  covar_file: "/your/covar/file" # standard plink-accepted tab-delimited covariate file
+
+qc:
+  maf: 0.05 # set threshold
+  overlap_ids: "/your/id/file" # to exclude overlap with clumping data
+  missing_sex: "/your/id/file" # to exclude other samples missing sex or for other reason
+  sumstats: "/your/sumstats" # for clumping
+  clump_field: "Pvalue" # standard clumping args - see plink 1.9 --clump docs for details
+  clump_kb: 1000
+  clump_p1: 1
+  clump_p2: 1
+  clump_r2: 0.75
+  clump_snp_field: "MarkerName"
+
+output:
+  dir: "/your/output/dir"
+  p_split: 0.7 # fraction of data to allocate to train split
+  chunk_size: 100 # size of row chunks for dask
+  dtype: "float16" # options: float16, float32, float64
+  file_type: "bfile" # only applies to the train/test splits, which should be bed/bim/fam for most ML software
+  
+run:
+  threads: 1
+  seed: 123
+  standardise_covariates: "True"
+
+env:
+  plink1_url: "https://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20241022.zip"
+  plink2_url: "https://s3.amazonaws.com/plink2-assets/alpha6/plink2_linux_avx2_20241114.zip" # linux 64-bit
+  conda_module: yourcondamodule/version # to be loaded with `module load conda_module`
+  job_env: "plink2hdf5" # don't change
