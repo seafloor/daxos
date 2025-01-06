@@ -1,7 +1,6 @@
 default-resources:
   runtime: 30 # minutes
   mem_mb: 40000 # mem-per-cpu * cpus-per-task
-  mem_per_cpu: 40000 # Default memory per job (adjustable if specific needs are unknown)
   cpus_per_task: 1
   tasks: 1
   slurm_account: "eadbwp2"
@@ -11,7 +10,6 @@ set-resources:
   convert_plink_to_raw:
     runtime: 360 # minutes (6 hours). Takes >3h for 40k*215k matrix
     mem_mb: 60000 # mem-per-cpu * cpus-per-task
-    mem_per_cpu: 60000 # Total memory for job (adjustable for larger datasets)
     cpus_per_task: 1 # Increase CPUs for potential parallelization
     tasks: 1
     slurm_account: "eadbwp2"
@@ -19,7 +17,6 @@ set-resources:
   convert_raw_to_hdf5:
     runtime: 360 # minutes (6 hours). Takes >3h for 40k*215k matrix
     mem_mb: 120000 # mem-per-cpu * cpus-per-task
-    mem_per_cpu: 60000 # Total memory for job (adjustable for larger datasets)
     cpus_per_task: 2 # Increase CPUs for potential parallelization
     tasks: 1
     slurm_account: "eadbwp2"
@@ -27,16 +24,17 @@ set-resources:
   clump_files:
     runtime: 240 # minutes (4 hours)
     mem_mb: 160000 # mem-per-cpu * cpus-per-task
-    mem_per_cpu: 80000 # Total memory for job
     cpus_per_task: 2 # Use 2 CPUs if clumping benefits from slight parallelism
     tasks: 1
     slurm_account: "eadbwp2"
-    slurm_partition: "'24c2'"
+    slurm_partition: "'24c3'" # must be 24c3 or 32c3 for this level of mem
   adjust_hdf5_for_covariates:
-    runtime: 480 # minutes (8 hours)
-    mem_mb: 400000 # mem-per-cpu * cpus-per-task
-    mem_per_cpu: 40000 # Increased to 250 GB due to high regression workload
-    cpus_per_task: 10 # Increase CPUs for regression parallelism if supported
+    runtime: 960 # minutes (16 hours)
+    mem_mb: 300000 # mem-per-cpu * cpus-per-task
+    cpus_per_task: 20 # Increase CPUs for regression parallelism if supported
     tasks: 1
     slurm_account: "eadbwp2"
-    slurm_partition: "'24c4'" # node is 
+    slurm_partition: "'32c3'" # nodes 32c3 have highest RealMemory
+
+# removed mem-per-cpu as will limit max mem
+#   mem_per_cpu: 300000 # Increased to 150 GB due to high regression workload

@@ -10,6 +10,19 @@ import dask.array as da
 import sys
 import os
 
+
+def get_slurm_cores():
+    if "SLURM_CPUS_PER_TASK" in os.environ:
+        # Use cpus-per-task if defined
+        return int(os.environ["SLURM_CPUS_PER_TASK"])
+    elif "SLURM_JOB_CPUS_PER_NODE" in os.environ:
+        # Use job CPUs per node if defined
+        return sum(map(int, os.environ["SLURM_JOB_CPUS_PER_NODE"].split(',')))
+    else:
+        # Default to os.cpu_count() if not running under SLURM
+        return os.cpu_count()
+
+
 def align_covars_to_rows(cov, ids):
     print(f'\nAligning covariate file of shape {cov.shape} to ids in X')
     cov = cov.set_index('IID').loc[ids, :].reset_index()
@@ -56,16 +69,31 @@ def process_column(args):
 
     return lr.coef_.reshape(-1, 1)
 
-def run_regressions(X, covars, cores=5):
+def run_regressions(X, covars, cores=5, report_interval=10000):
     # Prepare arguments for each column
     args = [(column, X, covars) for column in np.arange(X.shape[1])]
 
+    # Progress tracking
+    total_columns = X.shape[1]
+
+    def process_and_report(args):
+        column, X, covars = args
+        result = process_column(args)
+
+        # Print progress every `report_interval` columns
+        if column % report_interval == 0:
+            print(f"Processed {column}/{total_columns} columns")
+
+        return result
+
     # Use ProcessPoolExecutor for parallel processing
+    print('\n--> Beginning processing log for covariate adjustment...')
     with ProcessPoolExecutor(max_workers=cores) as executor:
-        betas = list(executor.map(process_column, args))
+        betas = list(executor.map(process_and_report, args))
 
     # Combine results while preserving order
     return np.hstack(betas).astype(np.float32)
+
 
 def calculate_betas_for_x(X, covars, cores=5):
     betas = run_regressions(X, covars, cores=cores)
@@ -141,6 +169,11 @@ def parse_bool(bool_arg):
 
 def main(hdf5_file, covar_file, out, standardise=True, scaler=None, row_chunks=100,
          x_betas=None, y_betas=None, write_unadjusted=True, cores=5):
+    
+    if cores is None:
+        cores = get_slurm_cores()
+
+    print(f"\n--> Using {cores} cores for processing.")
     X, y, rows, columns = force_compute(hdf5_file)
     covars = parse_covars(covar_file, rows.IID.to_numpy())
 
@@ -204,7 +237,7 @@ if __name__ == '__main__':
                         help='z-transform covariates before regression')
     parser.add_argument('--write_unadjusted', type=str, default='True',
                         help='If True, also write the original X/y to out_train and out_test')
-    parser.add_argument('--cores', type=int, default=10,
+    parser.add_argument('--cores', type=int, default=None,
                         help='N cores available on machine. For regression parallelism.')
     args = parser.parse_args()
 

@@ -8,22 +8,25 @@ BED_EXT = ["bed", "bim", "fam", "log"]
 RAW_EXT = ["raw", "log"]
 CLUMP_EXT = ["clumped", "log", "nosex"]
 IN_FILE = os.path.basename(config.get("input", {}).get("data", ""))
+OUTROOT = config["output"]["dir"]
+SEED = config["run"]["seed"]
+OUTDIR = f"{OUTROOT}/split_{SEED}"
 
 rule all:
     input:
-        f"{config['output']['dir']}/train/{IN_FILE}_shuffled_adjusted_train.hdf5",
-        f"{config['output']['dir']}/test/{IN_FILE}_shuffled_adjusted_test.hdf5",
+        f"{OUTDIR}/train/{IN_FILE}_shuffled_adjusted_train.hdf5",
+        f"{OUTDIR}/test/{IN_FILE}_shuffled_adjusted_test.hdf5",
         expand(
             "{outdir}/{split}/{infile}_shuffled_{split}.{ext}",
-            outdir=config['output']['dir'],
+            outdir=OUTDIR,
             split=["train", "test"],
             infile=IN_FILE,
             ext=PGEN_EXT if config['input']['file_type'] == 'pfile' else BED_EXT
         ),
-        f"{config['output']['dir']}/train/train_ids.txt",
-        f"{config['output']['dir']}/test/test_ids.txt",
-        f"{config['output']['dir']}/train/train_ids_plinkformat.txt",
-        f"{config['output']['dir']}/test/test_ids_plinkformat.txt"
+        f"{OUTDIR}/train/train_ids.txt",
+        f"{OUTDIR}/test/test_ids.txt",
+        f"{OUTDIR}/train/train_ids_plinkformat.txt",
+        f"{OUTDIR}/test/test_ids_plinkformat.txt"
 
 rule download_plink1:
     output:
@@ -64,7 +67,7 @@ rule filter_maf:
     params:
         infile=config['input']['data'],
         maf=config['qc']['maf'],
-        outfile=f"{config['output']['dir']}/{IN_FILE}_maf005",
+        outfile=f"{OUTDIR}/{IN_FILE}_maf005",
         tool=config['input']['tool'],
         file_type=config['input']['file_type'],
         overlap_ids=config['qc']['overlap_ids']
@@ -72,7 +75,7 @@ rule filter_maf:
         temp(
             expand(
                 "{outpath}/{infile}_maf005.{ext}",
-                outpath=config['output']['dir'],
+                outpath=OUTDIR,
                 infile=IN_FILE,
                 ext=BED_EXT
             )
@@ -95,12 +98,12 @@ rule clump_files:
         "bin/plink",
         expand(
             "{outpath}/{infile}_maf005.{ext}",
-            outpath=config['output']['dir'],
+            outpath=OUTDIR,
             infile=IN_FILE,
             ext=BED_EXT
         )
     params:
-        infile=f"{config['output']['dir']}/{IN_FILE}_maf005",
+        infile=f"{OUTDIR}/{IN_FILE}_maf005",
         sumstats=config['qc']['sumstats'],
         clump_field=config['qc']['clump_field'],
         clump_kb=config['qc']['clump_kb'],
@@ -109,18 +112,18 @@ rule clump_files:
         clump_r2=config['qc']['clump_r2'],
         clump_snp_field=config['qc']['clump_snp_field'],
         tool=config['input']['tool'],
-        outfile=f"{config['output']['dir']}/{IN_FILE}_maf005_clumping",
-        snplist=f"{config['output']['dir']}/{IN_FILE}_maf005_clumping_snplist.txt"
+        outfile=f"{OUTDIR}/{IN_FILE}_maf005_clumping",
+        snplist=f"{OUTDIR}/{IN_FILE}_maf005_clumping_snplist.txt"
     output:
         temp(
             expand(
                 "{outpath}/{infile}_maf005_clumping.{ext}",
-                outpath=config['output']['dir'],
+                outpath=OUTDIR,
                 infile=IN_FILE,
                 ext=CLUMP_EXT
             )
         ),
-        temp(f"{config['output']['dir']}/{IN_FILE}_maf005_clumping_snplist.txt")
+        temp(f"{OUTDIR}/{IN_FILE}_maf005_clumping_snplist.txt")
     threads:
         config["run"]["threads"]
     shell:
@@ -146,22 +149,22 @@ rule filtering_by_clumping:
         "bin/plink2",
         expand(
             "{outpath}/{infile}_maf005.{ext}",
-            outpath=config['output']['dir'],
+            outpath=OUTDIR,
             infile=IN_FILE,
             ext=BED_EXT
         ),
-        f"{config['output']['dir']}/{IN_FILE}_maf005_clumping_snplist.txt"
+        f"{OUTDIR}/{IN_FILE}_maf005_clumping_snplist.txt"
     params:
-        infile=f"{config['output']['dir']}/{IN_FILE}_maf005",
-        snplist=f"{config['output']['dir']}/{IN_FILE}_maf005_clumping_snplist.txt",
+        infile=f"{OUTDIR}/{IN_FILE}_maf005",
+        snplist=f"{OUTDIR}/{IN_FILE}_maf005_clumping_snplist.txt",
         nosexlist=config['qc']['missing_sex'],
         tool=config['input']['tool'],
-        outfile=f"{config['output']['dir']}/{IN_FILE}_qcd"
+        outfile=f"{OUTDIR}/{IN_FILE}_qcd"
     output:
         temp(
             expand(
                 "{outpath}/{infile}_qcd.{ext}",
-                outpath=config['output']['dir'],
+                outpath=OUTDIR,
                 infile=IN_FILE,
                 ext=BED_EXT
             )
@@ -183,20 +186,20 @@ rule convert_plink_to_raw:
         "bin/plink2",
         expand(
             "{outpath}/{infile}_qcd.{ext}",
-            outpath=config['output']['dir'],
+            outpath=OUTDIR,
             infile=IN_FILE,
             ext=BED_EXT
         )
     params:
-        infile=f"{config['output']['dir']}/{IN_FILE}_qcd",
+        infile=f"{OUTDIR}/{IN_FILE}_qcd",
         allelefile=f"{config['input']['allele_file']}",
-        outfile=f"{config['output']['dir']}/{IN_FILE}",
+        outfile=f"{OUTDIR}/{IN_FILE}",
         tool=config['input']['tool']
     output:
         temp(
             expand(
                 "{outdir}/{inpath}.{ext}",
-               outdir=config["output"]["dir"],
+               outdir=OUTDIR,
                inpath=IN_FILE,
                ext=RAW_EXT
             )
@@ -215,13 +218,13 @@ rule convert_plink_to_raw:
 rule shuffle_raw_file:
     input:
         expand("{outdir}/{inpath}.{ext}",
-               outdir=config["output"]["dir"],
+               outdir=OUTDIR,
                inpath=IN_FILE,
                ext=RAW_EXT)
     params:
-        infile=f"{config['output']['dir']}/{IN_FILE}.raw"
+        infile=f"{OUTDIR}/{IN_FILE}.raw"
     output:
-        temp(f"{config['output']['dir']}/{IN_FILE}_shuffled.raw")
+        temp(f"{OUTDIR}/{IN_FILE}_shuffled.raw")
     threads:
         config["run"]["threads"]
     shell:
@@ -232,7 +235,7 @@ rule shuffle_raw_file:
 
 rule convert_raw_to_hdf5:
     input:
-        f"{config['output']['dir']}/{IN_FILE}_shuffled.raw"
+        f"{OUTDIR}/{IN_FILE}_shuffled.raw"
     params:
         read_chunks=f"{config['input']['chunk_size']}",
         dask_chunks=f"{config['output']['chunk_size']}",
@@ -240,7 +243,7 @@ rule convert_raw_to_hdf5:
         job_module=config['env']['conda_module'],
         job_env=config["env"]["job_env"]
     output:
-        temp(f"{config['output']['dir']}/{IN_FILE}_shuffled.hdf5")
+        temp(f"{OUTDIR}/{IN_FILE}_shuffled.hdf5")
     threads:
         config["run"]["threads"]
     shell:
@@ -265,16 +268,16 @@ rule generate_train_test_split:
         f"{config['input']['covar_file']}"
     params:
         infile=config['input']['covar_file'],
-        outdir=config['output']['dir'],
+        outdir=OUTDIR,
         p_split=config['output']['p_split'],
-        seed=config['run']['seed'],
+        seed=SEED,
         job_module=config['env']['conda_module'],
         job_env=config["env"]["job_env"]
     output:
-        f"{config['output']['dir']}/train/train_ids.txt",
-        f"{config['output']['dir']}/test/test_ids.txt",
-        f"{config['output']['dir']}/train/train_ids_plinkformat.txt",
-        f"{config['output']['dir']}/test/test_ids_plinkformat.txt"
+        f"{OUTDIR}/train/train_ids.txt",
+        f"{OUTDIR}/test/test_ids.txt",
+        f"{OUTDIR}/train/train_ids_plinkformat.txt",
+        f"{OUTDIR}/test/test_ids_plinkformat.txt"
     threads:
         config["run"]["threads"]
     shell:
@@ -292,21 +295,21 @@ rule generate_train_test_split:
 
 rule split_hdf5_file:
     input:
-        f"{config['output']['dir']}/{IN_FILE}_shuffled.hdf5",
-        f"{config['output']['dir']}/train/train_ids.txt",
-        f"{config['output']['dir']}/test/test_ids.txt"
+        f"{OUTDIR}/{IN_FILE}_shuffled.hdf5",
+        f"{OUTDIR}/train/train_ids.txt",
+        f"{OUTDIR}/test/test_ids.txt"
     params:
-        infile=f"{config['output']['dir']}/{IN_FILE}_shuffled.hdf5",
-        train_outfile=f"{config['output']['dir']}/train/{IN_FILE}_shuffled_train.hdf5",
-        test_outfile=f"{config['output']['dir']}/test/{IN_FILE}_shuffled_test.hdf5",
-        train_ids=f"{config['output']['dir']}/train/train_ids.txt",
-        test_ids=f"{config['output']['dir']}/test/test_ids.txt",
+        infile=f"{OUTDIR}/{IN_FILE}_shuffled.hdf5",
+        train_outfile=f"{OUTDIR}/train/{IN_FILE}_shuffled_train.hdf5",
+        test_outfile=f"{OUTDIR}/test/{IN_FILE}_shuffled_test.hdf5",
+        train_ids=f"{OUTDIR}/train/train_ids.txt",
+        test_ids=f"{OUTDIR}/test/test_ids.txt",
         row_chunks=config['output']['chunk_size'],
         job_module=config['env']['conda_module'],
         job_env=config["env"]["job_env"]
     output:
-        temp(f"{config['output']['dir']}/train/{IN_FILE}_shuffled_train.hdf5"),
-        temp(f"{config['output']['dir']}/test/{IN_FILE}_shuffled_test.hdf5")
+        temp(f"{OUTDIR}/train/{IN_FILE}_shuffled_train.hdf5"),
+        temp(f"{OUTDIR}/test/{IN_FILE}_shuffled_test.hdf5")
     threads:
         config["run"]["threads"]
     shell:
@@ -339,25 +342,25 @@ rule split_plink_file:
         "bin/plink2",
         expand(
             "{outpath}/{infile}_qcd.{ext}",
-            outpath=config['output']['dir'],
+            outpath=OUTDIR,
             infile=IN_FILE,
             ext=BED_EXT
         ),
-        f"{config['output']['dir']}/train/train_ids_plinkformat.txt",
-        f"{config['output']['dir']}/test/test_ids_plinkformat.txt"
+        f"{OUTDIR}/train/train_ids_plinkformat.txt",
+        f"{OUTDIR}/test/test_ids_plinkformat.txt"
     params:
-        infile=f"{config['output']['dir']}/{IN_FILE}_qcd",
+        infile=f"{OUTDIR}/{IN_FILE}_qcd",
         tool=config['input']['tool'],
         file_type=config['input']['file_type'],
         write_type='make-bed',
-        train_ids=f"{config['output']['dir']}/train/train_ids_plinkformat.txt",
-        test_ids=f"{config['output']['dir']}/test/test_ids_plinkformat.txt",
-        train_outfile=f"{config['output']['dir']}/train/{IN_FILE}_shuffled_train",
-        test_outfile=f"{config['output']['dir']}/test/{IN_FILE}_shuffled_test"
+        train_ids=f"{OUTDIR}/train/train_ids_plinkformat.txt",
+        test_ids=f"{OUTDIR}/test/test_ids_plinkformat.txt",
+        train_outfile=f"{OUTDIR}/train/{IN_FILE}_shuffled_train",
+        test_outfile=f"{OUTDIR}/test/{IN_FILE}_shuffled_test"
     output:
         expand(
             "{outdir}/{split}/{infile}_shuffled_{split}.{ext}",
-            outdir=config['output']['dir'],
+            outdir=OUTDIR,
             split=["train", "test"],
             infile=IN_FILE,
             ext=BED_EXT
@@ -383,24 +386,21 @@ rule split_plink_file:
 
 rule adjust_hdf5_for_covariates:
     input:
-        f"{config['output']['dir']}/train/{IN_FILE}_shuffled_train.hdf5",
-        f"{config['output']['dir']}/test/{IN_FILE}_shuffled_test.hdf5",
+        f"{OUTDIR}/train/{IN_FILE}_shuffled_train.hdf5",
+        f"{OUTDIR}/test/{IN_FILE}_shuffled_test.hdf5",
         config['input']['covar_file']
     params:
-        in_train=f"{config['output']['dir']}/train/{IN_FILE}_shuffled_train.hdf5",
-        in_test=f"{config['output']['dir']}/test/{IN_FILE}_shuffled_test.hdf5",
-        out_train=f"{config['output']['dir']}/train/{IN_FILE}_shuffled_adjusted_train.hdf5",
-        out_test=f"{config['output']['dir']}/test/{IN_FILE}_shuffled_adjusted_test.hdf5",
+        in_train=f"{OUTDIR}/train/{IN_FILE}_shuffled_train.hdf5",
+        in_test=f"{OUTDIR}/test/{IN_FILE}_shuffled_test.hdf5",
+        out_train=f"{OUTDIR}/train/{IN_FILE}_shuffled_adjusted_train.hdf5",
+        out_test=f"{OUTDIR}/test/{IN_FILE}_shuffled_adjusted_test.hdf5",
         std_covars=config["run"]["standardise_covariates"],
         covar_file=config['input']['covar_file'],
         job_module=config['env']['conda_module'],
-        job_env=config["env"]["job_env"],
-        job_cores=config["run"]["regression_cores"]
+        job_env=config["env"]["job_env"]
     output:
-        f"{config['output']['dir']}/train/{IN_FILE}_shuffled_adjusted_train.hdf5",
-        f"{config['output']['dir']}/test/{IN_FILE}_shuffled_adjusted_test.hdf5"
-    threads:
-        config["run"]["regression_cores"]
+        f"{OUTDIR}/train/{IN_FILE}_shuffled_adjusted_train.hdf5",
+        f"{OUTDIR}/test/{IN_FILE}_shuffled_adjusted_test.hdf5"
     benchmark:
         "benchmarks/adjust_hdf5_for_covariates.txt"
     shell:
@@ -416,6 +416,5 @@ rule adjust_hdf5_for_covariates:
             --out_train {params.out_train} \
             --out_test {params.out_test} \
             --standardise_covars {params.std_covars} \
-            --write_unadjusted True \
-            --cores {params.job_cores}
+            --write_unadjusted True
         """

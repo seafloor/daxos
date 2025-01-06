@@ -49,7 +49,7 @@ snakemake -np --cores 1 --jobs 1
 Make sure config.yaml exists and is correct first!
 
 ```
-snakemake -p --cores 1 --executor slurm --workflow-profile profiles/slurm --jobs 1
+snakemake -p --cores 1 --executor slurm --workflow-profile profiles/slurm --jobs 3
 ```
 
 ## Debugging possible conda fixes

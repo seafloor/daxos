@@ -19,7 +19,7 @@ qc:
   clump_snp_field: "MarkerName"
 
 output:
-  dir: "/home/eadbwp2/processed_data/data_freeze/maf_0_05_clumped_r2_0_75/stability_checks/split_1" # change per re-run
+  dir: "/home/eadbwp2/processed_data/data_freeze/maf_0_05_clumped_r2_0_75/stability_checks" # set to /split_seed in snakefile
   p_split: 0.7 # fraction of data to allocate to train split
   chunk_size: 100 # size of row chunks for dask
   dtype: "float16" # options: float16, float32, float64
@@ -27,9 +27,8 @@ output:
   
 run:
   threads: 1
-  seed: 1
+  seed: 2
   standardise_covariates: "True" # if true standardise covars before regressing-off X/y
-  regression_cores: 10
 
 env:
   plink1_url: "https://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20241022.zip"
