@@ -1,18 +1,107 @@
 # basic setup
+import os
+
+configfile: "config.yaml"
+# localrules: download_plink1, download_plink2
+
+#PGEN_EXT = ["pgen", "pvar", "psam", "log"]
+#BED_EXT = ["bed", "bim", "fam", "log"]
+#RAW_EXT = ["raw", "log"]
+#CLUMP_EXT = ["clumped", "log", "nosex"]
+TRAIN_FILE = os.path.basename(config.get("input", {}).get("data", "").get("train", ""))
+TEST_FILE = os.path.basename(config.get("input", {}).get("data", "").get("test", ""))
+HP_DIR = config['refit']['hyperparams']
+SLURM_ID = os.environ(["SLURM_JOB_ID"])
+PREFIX = config["output"]["prefix"]
+OUT_DIR = os.path.join(config["output"]["dir"], f'job_{SLURM_ID}_{PREFIX}')
+SEED = config["jobs"]["seed"]
+OUTDIR = f"{OUTROOT}/split_{SEED}"
 
 # handle logic for argument checking from config file
 
 # make sure the actual /tmp files are specified as temp so they are cleaned up at the end
 # include the dummy data early on so we can iterate on tests faster than before
 
-rule run_hyperparameter_search:
+# rule run_hyperparameter_search:
     # to contain the equiv. of the cv if state from daxg
     # needs something to keep re-submitting when it fails an pickup on the next one
     # can prob be done by defining enough output files and stating re-submit on failure?
 
+# will refit after CV
+# needs to require files from hp search
 rule run_model_refit:
-    # will refit after CV
-    # needs to require files from hp search
+    input:
+        TRAIN_FILE,
+        HP_DIR
+    params:
+        infile=TRAIN_FILE,
+        threads=config['refit']['cpu_threads'],
+        time=config['refit']['time'],
+        mem=config['refit']['mem'],
+        workers=config['refit']['workers'],
+        cv_folds=config['cv']['folds'],
+        out=OUT_DIR,
+        train_prefix=f'{PREFIX}_train_refit',
+        dask_chunks=config['jobs']['dask_row_chunks'],
+        hyperparams=HP_DIR,
+        gpu=config['jobs']['gpu'],
+        xkey=config['jobs']['xkey'],
+        ykey=config['jobs']['ykey'],
+        worker_queue=config['jobs']['worker_queue'],
+        job_module=config['env']['conda_module'],
+        job_env=config['env']['job_env'],
+        tmp_dir=f'/tmp/{SLURM_ID}'
+    output:
+        f'{OUT_DIR}/refit/importances/{PREFIX}_train_refit_imp.csv', # importance scores
+        f'{OUT_DIR}/refit/importances/{PREFIX}_train_refit_shap_colnames.csv',
+        f'{OUT_DIR}/refit/importances/{PREFIX}_train_refit_shap_main.zarr',
+        f'{OUT_DIR}/refit/models/{PREFIX}_train_refit_origrefit_xgbmodel.json', # models
+        f'{OUT_DIR}/refit/models/{PREFIX}_train_refit_shaprefit_plattscalemodel.json',
+        f'{OUT_DIR}/refit/models/{PREFIX}_train_refit_shaprefit_xgbmodel.json',
+        f'{OUT_DIR}/refit/predictors/{PREFIX}_train_refit_used_cols.csv' # predictors
+    shell:
+        """
+        # load module and env
+        module purge
+        module load {params.job_module}
+        conda activate {params.job_env}
 
-rule run_predict:
+        # print node name for setting up dask dashboard
+        echo -e "\n################################################################################"
+        echo -e "############################# DASK DASHBOARD SETUP #############################"
+        echo "  Running Dask scheduler on node ${{SLURMD_NODENAME}}"
+        echo "  Paste command below into local terminal session to allow tunnelling for the dask dashboard:"
+        echo "  'ssh -N -L 8787:${{SLURMD_NODENAME}}:8787 username@server'"
+        echo "  paste address 'localhost:8787' in local browser session"
+        echo -e "################################################################################"
+        echo -e "################################################################################\n"
+
+        python3 ../../scripts/refit.py \
+            --in_ml {params.infile} \
+            --n_threads_per_worker {params.threads} \
+            --time_per_worker {params.time} \
+            --mem_per_worker {params.mem} \
+            --n_workers_in_cluster {params.workers} \
+            --n_folds {params.cv_folds} \
+            --out {params.out} \
+            --prefix {params.train_prefix} \
+            --local_dir {params.tmp_dir} \
+            --row_chunk_size {params.dask_chunks} \
+            --cluster distributed \
+            --incremental_learning False \
+            --incremental_start_round 0 \
+            --incremental_n_boost_per_round 10 \
+            --verbose True \
+            --xgb_eval_metric logloss \
+            --run_shap_main True \
+            --run_shap_inter False \
+            --hp_search_results {params.hyperparams} \
+            --gpu {params.gpu} \
+            --interface None \
+            --xkey {params.xkey} \
+            --ykey {params.ykey} \
+            --worker_queue {params.worker_queue}
+        """
+
+# rule run_predict:
     # will predict after refit

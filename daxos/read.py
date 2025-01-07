@@ -178,7 +178,7 @@ def subset_hdf5s(in_path, out_path, x_key='x', y_key='y', row_ids=None, col_ids=
     if all([row_ids is None, col_ids is None]):
         raise ValueError('Neither row or column IDs were passed')
 
-    with h5py.File(in_path) as f:
+    with h5py.File(in_path, 'r') as f:
         X, y, rows, columns = read_ml(in_path, f, x_key=x_key, y_key=y_key)
 
         if row_ids is not None:

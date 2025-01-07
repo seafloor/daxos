@@ -147,7 +147,7 @@ def calculate_residuals_for_y(y, cov, betas):
 
 
 def force_compute(hdf5_file, **kwargs):
-    with h5py.File(hdf5_file) as f:
+    with h5py.File(hdf5_file, 'r') as f:
         X, y, rows, columns = read_ml(hdf5_file, f, **kwargs)
         X = X.compute()
         y = y.compute()

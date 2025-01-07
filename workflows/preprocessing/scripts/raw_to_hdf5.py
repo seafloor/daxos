@@ -133,7 +133,7 @@ def raw_to_hdf5(f, out_name, nrows, row_chunks=100, check_output=False, read_raw
     if check_output:
         _ = read_dask_ml_info_file(out_name, verbose=True, row_key='rows', column_key='cols')
 
-        with h5py.File(out_name, mode='r') as in_file:
+        with h5py.File(out_name, 'r') as in_file:
             _ = read_dask_ml_file(in_file, X.shape[1], row_chunks=row_chunks)
 
 

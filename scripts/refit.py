@@ -199,7 +199,7 @@ if __name__ == '__main__':
             # client.wait_for_workers(args.n_workers_in_cluster, 300)
 
             print(f'Returned client with info/address: {client}')
-            with h5py.File(args.in_ml) as f:
+            with h5py.File(args.in_ml, 'r') as f:
                 X, y, rows, columns = read_ml(args.in_ml, f, row_chunks=args.row_chunk_size,
                                               x_key=args.xkey, y_key=args.ykey)
                 y_binary = da.from_array(f['y'], chunks=(args.row_chunk_size, 1))

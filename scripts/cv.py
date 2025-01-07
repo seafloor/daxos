@@ -111,7 +111,7 @@ if __name__ == '__main__':
 
         with Client(cluster) as client:
             print(f'Returned client with info/address: {client}')
-            with h5py.File(args.in_ml) as f:
+            with h5py.File(args.in_ml, 'r') as f:
                 X, y, rows, columns = read_ml(args.in_ml, f, row_chunks=args.row_chunk_size,
                                               x_key=args.xkey, y_key=args.ykey)
 

@@ -103,7 +103,7 @@ if __name__ == '__main__':
     assert ids.shape[0] > 1, f'ID file too short: shape {ids.shape}'
     print(f'--> Read {ids.shape[0]} IDs for subsetting. Sample: {ids[:5].flatten()}')
 
-    with h5py.File(args.in_path) as f:
+    with h5py.File(args.in_path, 'r') as f:
         X, y, rows, columns = read_ml(args.in_path, f, x_key=args.xkey, y_key=args.ykey)
         X, y, rows = subset_hdf5_rows(X, y, rows, ids)
 
@@ -112,5 +112,5 @@ if __name__ == '__main__':
         print('\n--> Reading split file back in as a final check...')
         _ = read_dask_ml_info_file(args.out_path, verbose=True, row_key='rows', column_key='cols')
 
-        with h5py.File(args.out_path, mode='r') as in_file:
+        with h5py.File(args.out_path, 'r') as in_file:
             _ = read_dask_ml_file(in_file, X.shape[1], row_chunks=args.row_chunks)

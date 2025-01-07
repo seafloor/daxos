@@ -33,7 +33,7 @@ if __name__ == '__main__':
     print('Spinning up local cluster on scheduler node to handle initial data loading')
     with LocalCluster() as cluster:
         with Client(cluster) as client:
-            with h5py.File(in_ml) as f:
+            with h5py.File(in_ml, 'r') as f:
                 X, y, rows, columns = read_ml(in_ml, f, x_key='x_adjusted', y_key='y_adjusted')
                 X = X.compute()
                 y = y.compute()
