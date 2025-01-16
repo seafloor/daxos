@@ -1,15 +1,15 @@
 input:
   data:
-    train: "../../examples/data/example_data.hdf5"
-    test: "/your/test/data.hdf5"
+    train: "/home/matthew.smith/daxos/examples/data/example_data_train.hdf5"
+    test: "/home/matthew.smith/daxos/examples/data/example_data_test.hdf5"
 # set default arguments for when args are not passed
 
 output: # ??? this is a mess - sort to single output folder
   dir: "/home/matthew.smith/workdir2024/xgboost"
-  prefix: "test_run" # run name to append to output folder
+  prefix: "test_run_adjusted" # run name to append to output folder
 
 cv:
-  folds: 5 # n folds in CV
+  folds: 3 # n folds in CV
   iter: 50 # n iterations random search in CV
   time: "'04_00_00'" # time per worker as HH_MM_SS
   mem: "'32G'" # mem per worker as G
@@ -19,24 +19,31 @@ cv:
   hp_round: 0 # ??? which round of HP tuning we're on - may be redundant with snakemake
 
 refit: # resources must cover total of 640G RAM for 28k*215k train set
-  cpu_threads: 5
-  time: "'20_00_00'" 
-  mem: "'50G'"
-  workers: 13
+  cpu_threads: 2
+  time: "'01_00_00'" 
+  mem: "'10G'"
+  workers: 2
+  force_n_boosters: 10
   hyperparams: "/home/matthew.smith/workdir2024/xgboost/cv/clumped_075_maf_005_with_apoe/hpsearch" # path to file or directors with output from HP search
 
 predict:
-  bst: "/path/to/booster.json" # path to prefit serialised boosting model to use for predictions
-  bstcols: "path/to/booster/columns.txt" # file containing column names from model in bst
+  cpu_threads: 2
+  time: "'00_30_00'" 
+  mem: "'5G'"
+  workers: 2
+  bst_path: None # "/path/to/booster.json" path to prefit serialised boosting model. Default to output from refit if None. Put here to overwrite
+  bst_col_path: None # "/path/to/booster/columns.txt" file containing column names from model in bst. Default to output from refit if None. Put here to overwrite
+  platt_model: None # "/path/to/model.json" for the platt scale model. Default None uses model from refit. Put here to overwrite.
 
 jobs: # holds universal rules for runs
   dask_row_chunks: 500 # size of chunks to read with dask
   interface: None # can manually try to force ethernet, infiniband etc.
   worker_queue: None # can manually try to force worker queue
-  xkey: 'x' # key for accessing predictors in hdf5 files
-  ykey: 'y' # key for accessing outcome in hdf5 files
+  xkey: 'x_adjusted' # key for accessing predictors in hdf5 files
+  ykey: 'y_adjusted' # key for accessing outcome in hdf5 files
   seed: 123
   gpu: False # if true run all training on GPU. NOT IMPLEMENTED.
+  temp_dir: '/home/matthew.smith/workdir2024' # must also be changed in slurm_extra in profiles/slurm/config.yaml
 
 model: # holds universal rules for xgb models
   subsample: 0.7 # size of subsample for each tree in boosting rounds

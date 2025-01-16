@@ -1,5 +1,7 @@
 # snakemake
 workflows/preprocessing/.snakemake
+workflows/training/.snakemake
+workflows/training/slurm*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

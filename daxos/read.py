@@ -100,6 +100,13 @@ def read_ml(container_name, file_object, verbose=True, **kwargs):
     rows, columns = read_dask_ml_info_file(container_name, verbose=verbose)
     X, y = read_dask_ml_file(f=file_object, col_chunks=columns.shape[0], verbose=verbose, **kwargs)
 
+    assert rows.shape[0] == X.shape[0], f'Rows in row info ({rows.shape[0]}) and X ({X.shape[0]}) are not equal'
+    assert y.shape[0] == X.shape[0], f'Rows in y ({y.shape[0]}) and X ({X.shape[0]}) are not equal'
+    assert columns.shape[0] == X.shape[1], f'Columns in column info ({columns.shape[0]}) and X ({X.shape[1]}) are not equal'
+
+    if verbose:
+        print('Shape of X, y, row and column info match')
+
     return X, y, rows, columns
 
 

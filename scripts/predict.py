@@ -1,7 +1,7 @@
 import sys
 import os
 import time
-sys.path.insert(0, os.path.join(os.path.expanduser('~'), 'daxg'))
+sys.path.insert(0, os.path.join(os.path.expanduser('~'), 'daxos'))
 from daxg.read import read_ml, load_booster
 from daxg.explain import collect_importances, subset_predictors
 from daxg.utils import parse_bool, yhat, force_none_if_str_empty
@@ -54,7 +54,7 @@ if __name__ == '__main__':
                         help='Full path of fit logistic regression or other sklearn model. Will be loaded and passed '
                              'the test set predictions from XGBoost as input.')
     parser.add_argument('--gpu', type=str, default='False',
-                        help='Use GPUs if True. Not implemented yet.')
+                        help='Use GPUs if True.')
     parser.add_argument('--interface', type=str, default='None',
                         help='Networking interface for connection between workers. Uses "lo" if --cluster is "local"')
     parser.add_argument('--xkey', type=str, default='x',
@@ -72,7 +72,8 @@ if __name__ == '__main__':
     platt_scale_model = force_none_if_str_empty(args.platt_scale_model)
 
     if args.ykey == 'y_adjusted':
-        assert platt_scale_model is not None
+        assert platt_scale_model is not None, 'Platt model required for continuous y'
+        assert all([os.path.exists(platt_scale_model) and os.path.getsize(platt_scale_model) > 0]), 'Platt model does not exist'
         score_method = 'RMSE'
         platt_model = joblib.load(platt_scale_model)
     else:

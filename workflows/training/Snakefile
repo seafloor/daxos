@@ -1,34 +1,31 @@
-# basic setup
 import os
 
 configfile: "config.yaml"
-# localrules: download_plink1, download_plink2
 
-#PGEN_EXT = ["pgen", "pvar", "psam", "log"]
-#BED_EXT = ["bed", "bim", "fam", "log"]
-#RAW_EXT = ["raw", "log"]
-#CLUMP_EXT = ["clumped", "log", "nosex"]
-TRAIN_FILE = os.path.basename(config.get("input", {}).get("data", "").get("train", ""))
-TEST_FILE = os.path.basename(config.get("input", {}).get("data", "").get("test", ""))
+TRAIN_FILE = config.get("input", {}).get("data", "").get("train", "")
+TEST_FILE = config.get("input", {}).get("data", "").get("test", "")
 HP_DIR = config['refit']['hyperparams']
-SLURM_ID = os.environ(["SLURM_JOB_ID"])
 PREFIX = config["output"]["prefix"]
-OUT_DIR = os.path.join(config["output"]["dir"], f'job_{SLURM_ID}_{PREFIX}')
-SEED = config["jobs"]["seed"]
-OUTDIR = f"{OUTROOT}/split_{SEED}"
+OUT_DIR = os.path.join(config["output"]["dir"], f'job_{PREFIX}')
+PLATT_MODEL = (
+    config['predict']['platt_model'] 
+    if config['predict']['platt_model'] not in (None, "None") 
+    else f'{OUT_DIR}/refit/models/{PREFIX}_train_refit_shaprefit_plattscalemodel.json'
+)
 
-# handle logic for argument checking from config file
+rule all:
+    input:
+        f'{OUT_DIR}/refit/importances/{PREFIX}_train_refit_imp.csv', # train data: importance scores
+        f'{OUT_DIR}/refit/importances/{PREFIX}_train_refit_shap_colnames.csv',
+        directory(f'{OUT_DIR}/refit/importances/{PREFIX}_train_refit_shap_main.zarr'),
+        f'{OUT_DIR}/refit/models/{PREFIX}_train_refit_origrefit_xgbmodel.json', # train data: models
+        f'{OUT_DIR}/refit/models/{PREFIX}_train_refit_shaprefit_xgbmodel.json',
+        f'{OUT_DIR}/refit/predictors/{PREFIX}_train_refit_used_cols.csv', # train data: predictors
+        f'{OUT_DIR}/predict/predictions/{PREFIX}_test_predict_y_pred.csv', # test data: predictions
+        f'{OUT_DIR}/predict/importances/{PREFIX}_test_predict_imp.csv', # test data: importance scores
+        f'{OUT_DIR}/predict/importances/{PREFIX}_test_predict_shap_colnames.csv',
+        directory(f'{OUT_DIR}/predict/importances/{PREFIX}_test_predict_shap_main.zarr')
 
-# make sure the actual /tmp files are specified as temp so they are cleaned up at the end
-# include the dummy data early on so we can iterate on tests faster than before
-
-# rule run_hyperparameter_search:
-    # to contain the equiv. of the cv if state from daxg
-    # needs something to keep re-submitting when it fails an pickup on the next one
-    # can prob be done by defining enough output files and stating re-submit on failure?
-
-# will refit after CV
-# needs to require files from hp search
 rule run_model_refit:
     input:
         TRAIN_FILE,
@@ -50,15 +47,16 @@ rule run_model_refit:
         worker_queue=config['jobs']['worker_queue'],
         job_module=config['env']['conda_module'],
         job_env=config['env']['job_env'],
-        tmp_dir=f'/tmp/{SLURM_ID}'
+        tmp_dir=f"{config['jobs']['temp_dir']}/dask_temp/{PREFIX}",
+        force_n_boosters=config['refit']['force_n_boosters']
     output:
         f'{OUT_DIR}/refit/importances/{PREFIX}_train_refit_imp.csv', # importance scores
         f'{OUT_DIR}/refit/importances/{PREFIX}_train_refit_shap_colnames.csv',
-        f'{OUT_DIR}/refit/importances/{PREFIX}_train_refit_shap_main.zarr',
+        directory(f'{OUT_DIR}/refit/importances/{PREFIX}_train_refit_shap_main.zarr'),
         f'{OUT_DIR}/refit/models/{PREFIX}_train_refit_origrefit_xgbmodel.json', # models
-        f'{OUT_DIR}/refit/models/{PREFIX}_train_refit_shaprefit_plattscalemodel.json',
         f'{OUT_DIR}/refit/models/{PREFIX}_train_refit_shaprefit_xgbmodel.json',
-        f'{OUT_DIR}/refit/predictors/{PREFIX}_train_refit_used_cols.csv' # predictors
+        f'{OUT_DIR}/refit/predictors/{PREFIX}_train_refit_used_cols.csv', # predictors
+        temp(directory(f"{config['jobs']['temp_dir']}/dask_temp/{PREFIX}")) # dask temp dir - to be deleted
     shell:
         """
         # load module and env
@@ -100,8 +98,76 @@ rule run_model_refit:
             --interface None \
             --xkey {params.xkey} \
             --ykey {params.ykey} \
-            --worker_queue {params.worker_queue}
+            --worker_queue {params.worker_queue} \
+            --n_booster_overide {params.force_n_boosters}
         """
 
-# rule run_predict:
-    # will predict after refit
+rule run_model_predict:
+    input:
+        TEST_FILE,
+        bst_col_path=f'{OUT_DIR}/refit/predictors/{PREFIX}_train_refit_used_cols.csv',
+        bst_path=f'{OUT_DIR}/refit/models/{PREFIX}_train_refit_shaprefit_xgbmodel.json'
+    params:
+        infile=TEST_FILE,
+        bst_col_path=f'{OUT_DIR}/refit/predictors/{PREFIX}_train_refit_used_cols.csv',
+        bst_path=f'{OUT_DIR}/refit/models/{PREFIX}_train_refit_shaprefit_xgbmodel.json',
+        platt_model=PLATT_MODEL,
+        threads=config['predict']['cpu_threads'],
+        time=config['predict']['time'],
+        mem=config['predict']['mem'],
+        workers=config['predict']['workers'],
+        gpu=config['jobs']['gpu'],
+        xkey=config['jobs']['xkey'],
+        ykey=config['jobs']['ykey'],
+        worker_queue=config['jobs']['worker_queue'],
+        dask_chunks=config['jobs']['dask_row_chunks'],
+        out=OUT_DIR,
+        test_prefix=f'{PREFIX}_test_predict',
+        job_module=config['env']['conda_module'],
+        job_env=config['env']['job_env'],
+        tmp_dir=f"{config['jobs']['temp_dir']}/dask_temp/{PREFIX}"
+    output:
+        temp(directory(f"{config['jobs']['temp_dir']}/dask_temp/{PREFIX}")), # temp dask files
+        f'{OUT_DIR}/predict/predictions/{PREFIX}_test_predict_y_pred.csv', # predictions
+        f'{OUT_DIR}/predict/importances/{PREFIX}_test_predict_imp.csv', # importance scores
+        f'{OUT_DIR}/predict/importances/{PREFIX}_test_predict_shap_colnames.csv',
+        directory(f'{OUT_DIR}/predict/importances/{PREFIX}_test_predict_shap_main.zarr')
+    shell:
+        """
+        # load module and env
+        module purge
+        module load {params.job_module}
+        conda activate {params.job_env}
+
+        # print node name for setting up dask dashboard
+        echo -e "\n################################################################################"
+        echo -e "############################# DASK DASHBOARD SETUP #############################"
+        echo "  Running Dask scheduler on node ${{SLURMD_NODENAME}}"
+        echo "  Paste command below into local terminal session to allow tunnelling for the dask dashboard:"
+        echo "  'ssh -N -L 8787:${{SLURMD_NODENAME}}:8787 username@server'"
+        echo "  paste address 'localhost:8787' in local browser session"
+        echo -e "################################################################################"
+        echo -e "################################################################################\n"
+
+        python3 ../../scripts/predict.py \
+            --in_ml {params.infile} \
+            --used_cols {params.bst_col_path} \
+            --bst_path {params.bst_path} \
+            --cluster distributed \
+            --n_threads_per_worker {params.threads} \
+            --time_per_worker {params.time} \
+            --mem_per_worker {params.mem} \
+            --n_workers_in_cluster {params.workers} \
+            --out {params.out} \
+            --prefix {params.test_prefix} \
+            --local_dir {params.tmp_dir} \
+            --row_chunk_size {params.dask_chunks} \
+            --run_shap_main True \
+            --run_shap_inter False \
+            --platt_scale_model {params.platt_model} \
+            --gpu {params.gpu} \
+            --interface None \
+            --xkey {params.xkey} \
+            --ykey {params.ykey} \
+            --worker_queue {params.worker_queue}
+        """

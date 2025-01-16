@@ -1,6 +1,6 @@
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.expanduser('~'), 'daxg'))
+sys.path.insert(0, os.path.join(os.path.expanduser('~'), 'daxos'))
 from daxg.utils import parse_bool
 from daxg.distribute import spin_cluster, scale_cluster
 from daxg.crossvalidate import cv_xgb

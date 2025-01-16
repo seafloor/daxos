@@ -22,11 +22,7 @@ rule all:
             split=["train", "test"],
             infile=IN_FILE,
             ext=PGEN_EXT if config['input']['file_type'] == 'pfile' else BED_EXT
-        ),
-        f"{OUTDIR}/train/train_ids.txt",
-        f"{OUTDIR}/test/test_ids.txt",
-        f"{OUTDIR}/train/train_ids_plinkformat.txt",
-        f"{OUTDIR}/test/test_ids_plinkformat.txt"
+        )
 
 rule download_plink1:
     output:
@@ -274,10 +270,10 @@ rule generate_train_test_split:
         job_module=config['env']['conda_module'],
         job_env=config["env"]["job_env"]
     output:
-        f"{OUTDIR}/train/train_ids.txt",
-        f"{OUTDIR}/test/test_ids.txt",
-        f"{OUTDIR}/train/train_ids_plinkformat.txt",
-        f"{OUTDIR}/test/test_ids_plinkformat.txt"
+        temp(f"{OUTDIR}/train/train_ids.txt"),
+        temp(f"{OUTDIR}/test/test_ids.txt"),
+        temp(f"{OUTDIR}/train/train_ids_plinkformat.txt"),
+        temp(f"{OUTDIR}/test/test_ids_plinkformat.txt")
     threads:
         config["run"]["threads"]
     shell:

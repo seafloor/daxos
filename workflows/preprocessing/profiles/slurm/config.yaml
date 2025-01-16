@@ -30,8 +30,8 @@ set-resources:
     slurm_partition: "'24c3'" # must be 24c3 or 32c3 for this level of mem
   adjust_hdf5_for_covariates:
     runtime: 960 # minutes (16 hours)
-    mem_mb: 300000 # mem-per-cpu * cpus-per-task
-    cpus_per_task: 20 # Increase CPUs for regression parallelism if supported
+    mem_mb: 400000 # mem-per-cpu * cpus-per-task
+    cpus_per_task: 1 # Increase CPUs for regression parallelism if supported
     tasks: 1
     slurm_account: "eadbwp2"
     slurm_partition: "'32c3'" # nodes 32c3 have highest RealMemory

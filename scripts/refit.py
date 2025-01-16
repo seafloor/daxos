@@ -1,6 +1,6 @@
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.expanduser('~'), 'daxg'))
+sys.path.insert(0, os.path.join(os.path.expanduser('~'), 'daxos'))
 from daxg.read import read_ml, save_booster
 from daxg.explain import collect_importances, subset_predictors
 from daxg.crossvalidate import read_hp_search_results, incremental_fit_xgb, fit_dask_xgb, persist_daskdmatrix, score_model
@@ -22,10 +22,14 @@ import h5py
 
 def main(client, X, y, colnames, n_folds=5, increment_refit=False, row_chunks=100, out_dir=None, out_prefix=None,
          incremental_start_round=1, incremental_n_boost_per_round=1, run_shap_main=False, run_shap_inter=False,
-         hp_search_file='', platt_scale=False, y_binary=None, score_method='AUC', **fit_kwargs):
+         hp_search_file='', platt_scale=False, y_binary=None, score_method='AUC',
+         n_booster_overide=None, **fit_kwargs):
 
     # read CV results and assume sort order is descending only if using AUC, else ascending (e.g. for RMSE)
     best_params = read_hp_search_results(hp_search_file)
+    if n_booster_overide is not None:
+        print(f"Manually overwriting n_boosters from {best_params['n_boost_round']} to {n_booster_overide}")
+        best_params['n_boost_round'] = n_booster_overide
 
     print("\n--> Fitting/Refitting on full dataset with params:")
     pprint.pprint(best_params)
@@ -153,7 +157,7 @@ if __name__ == '__main__':
     parser.add_argument('--loss', type=str, default='binary:logistic',
                         help='Will be overriden with "reg:squarederror" if covar supplied')
     parser.add_argument('--gpu', type=str, default='False',
-                        help='Use GPUs if True. Not implemented yet.')
+                        help='Use GPUs if True.')
     parser.add_argument('--interface', type=str, default='ib0',
                         help='Networking interface for connection between workers. Uses "lo" if --cluster is "local"')
     parser.add_argument('--xkey', type=str, default='x',
@@ -162,6 +166,8 @@ if __name__ == '__main__':
                         help='Key in hdf5 file for y.')
     parser.add_argument('--worker_queue', type=str, default='None',
                         help='Name of queue to submit worker jobs to. Default None.')
+    parser.add_argument('--n_booster_overide', type=int, default=None,
+                        help='N booster for non-incremental learning. Overwrites HP-tuning value. Default None.')
     args = parser.parse_args()
 
     incremental_learning, verbose, run_shap_main, run_shap_inter, gpu = [
@@ -219,7 +225,8 @@ if __name__ == '__main__':
                     client, X, y, column_names, args.n_folds, incremental_learning,
                     args.row_chunk_size, args.out, args.prefix, args.incremental_start_round,
                     args.incremental_n_boost_per_round, run_shap_main, run_shap_inter, args.hp_search_results,
-                    platt_scale, y_binary=y_binary, score_method=score_method, **fit_kwargs
+                    platt_scale, y_binary=y_binary, score_method=score_method,
+                    n_booster_overide=args.n_booster_overide, **fit_kwargs
                 )
 
     t1 = time.time()

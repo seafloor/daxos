@@ -2,7 +2,7 @@ import h5py
 import pandas as pd
 import numpy as np
 import sys, os
-sys.path.insert(0, os.path.join(os.path.expanduser('~'), 'daxg'))
+sys.path.insert(0, os.path.join(os.path.expanduser('~'), 'daxos'))
 from daxg.boruta import boruta
 from daxg.distribute import spin_cluster, scale_cluster
 from daxg.crossvalidate import read_hp_search_results

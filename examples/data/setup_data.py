@@ -3,10 +3,12 @@ import pandas as pd
 import dask.array as da
 import os
 import argparse
+from sklearn.linear_model import LinearRegression
 import statsmodels.api as sm
 
 
 def create_dummy_snp_names(p=10):
+    np.random.seed(10)
     snp_columns = zip(np.random.randint(10000, 1000000, size=p-2),
                       np.random.choice(['A', 'C', 'G', 'T'], replace=True, size=p-2))
     
@@ -58,17 +60,57 @@ def create_simple_sim(n=10000, p=100, seed=123):
     return X, y, snp_names
 
 
-def save_hdf5(out_name, X, y, snp_names):
+def add_adjustment(X, y, loc=0, scale=0.1):
+    print('\n--> Adding adjusted X/y with dummy covariates')
+
+    # simulate two normal and 1 binary covariate for adjustment
+    covars = np.hstack([
+        np.random.normal(loc=loc, scale=scale, size=X.shape[0]).reshape(-1, 1),
+        np.random.normal(loc=loc, scale=scale, size=X.shape[0]).reshape(-1, 1),
+        np.random.choice([0, 1], size=X.shape[0]).reshape(-1, 1)
+    ])
+
+    # get residuals for X
+    betas = []
+    for column in np.arange(X.shape[1]):
+        lr = LinearRegression()
+        lr.fit(covars, X[:, column])
+        betas.append(lr.coef_.reshape(-1, 1))
+    
+    betas = np.hstack(betas)
+    assert betas.shape == (covars.shape[1], X.shape[1])
+    cov_dot_beta = np.dot(covars, betas)
+    X_residuals = (X - cov_dot_beta).astype(np.float16)
+
+    # get residuals for y
+    y_beta = LinearRegression().fit(covars, y).coef_.reshape(-1, 1)
+    cov_dot_beta = np.dot(covars, y_beta)
+    y_residuals = np.subtract(y, cov_dot_beta).astype(np.float16)
+
+    assert X.shape == X_residuals.shape, f'Shape of X {X.shape} and X_residuals {X_residuals.shape} are not equal'
+    assert y.shape == y_residuals.shape, f'Shape of y {y.shape} and y_residuals {y_residuals.shape} are not equal'
+    print('Adjusted X/y match original X/y shape')
+
+    return X_residuals, y_residuals
+
+
+def save_hdf5(out_name, X, y, X_adjusted, y_adjusted, snp_names):
     print(f'\n--> Saving data to {out_name}')
     # Create and save X and y
-    X = da.from_array(X, chunks=(100, 10))
+    X = da.from_array(X, chunks=(100, X.shape[1]))
     y = da.from_array(y, chunks=(100, 1))
-    da.to_hdf5(out_name, {'x': X}, chunks=(100, 10))
+    da.to_hdf5(out_name, {'x': X}, chunks=(100, X.shape[1]))
     da.to_hdf5(out_name, {'y': y}, chunks=(100, 1))
+
+    # Create and save X and y adjusted
+    X_adjusted = da.from_array(X_adjusted, chunks=(100, X_adjusted.shape[1]))
+    y_adjusted = da.from_array(y_adjusted, chunks=(100, 1))
+    da.to_hdf5(out_name, {'x_adjusted': X_adjusted}, chunks=(100, X_adjusted.shape[1]))
+    da.to_hdf5(out_name, {'y_adjusted': y_adjusted}, chunks=(100, 1))
 
     # Create and save rows and cols
     print('Creating dummy family file...')
-    rows = create_dummy_fam_file(1000)
+    rows = create_dummy_fam_file(n = X.shape[0])
     rows.to_hdf(out_name, 'rows')
     
     print('Saving SNP names...')
@@ -135,7 +177,8 @@ if __name__ == '__main__':
     print(f'Parameters: n={args.n}, p={args.p}, seed={args.seed}, output_file={args.output_file}')
 
     X, y, snp_names = create_simple_sim(n=args.n, p=args.p, seed=args.seed)
-    save_hdf5(args.output_file, X, y, snp_names)
+    X_adjusted, y_adjusted = add_adjustment(X, y)
+    save_hdf5(args.output_file, X, y, X_adjusted, y_adjusted, snp_names)
 
     if os.path.exists(args.output_file):
         print(f'\nSimulation data saved successfully to {args.output_file}')
