@@ -1,7 +1,7 @@
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.expanduser('~'), 'daxos'))
-from dask_xgboost_slurm import read
+from daxos import read
 import argparse
 
 

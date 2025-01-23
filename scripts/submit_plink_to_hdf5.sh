@@ -43,7 +43,7 @@ chmod 700 /tmp/user_${SLURM_JOB_ID}
 
 # setup python env
 # change to whatever module/conda environments you have
-module load anaconda3/2020.02
+module load conda/23.11-py311
 conda activate daxos
 
 # convert to raw with plink

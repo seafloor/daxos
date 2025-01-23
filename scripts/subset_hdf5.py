@@ -3,7 +3,7 @@ import pandas as pd
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.expanduser('~'), 'daxos'))
-from dask_xgboost_slurm.read import subset_hdf5s
+from daxos.read import subset_hdf5s
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Subset hdf5 files by rows/columns',

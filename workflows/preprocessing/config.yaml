@@ -27,7 +27,7 @@ output:
   
 run:
   threads: 1
-  seed: 3
+  seed: 2
   standardise_covariates: "True" # if true standardise covars before regressing-off X/y
 
 env:

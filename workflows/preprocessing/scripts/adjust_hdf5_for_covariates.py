@@ -1,6 +1,7 @@
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from concurrent.futures import ProcessPoolExecutor
+from multiprocessing import shared_memory
 from split_hdf5 import read_ml
 from split_ids import read_covars, check_covars
 import argparse
@@ -45,53 +46,48 @@ def parse_covars(f, ids):
     return cov.to_numpy(dtype=np.float32)
 
 
-# def run_regressions(X, covars):
-#     betas = []
+def process_column_with_shm(args):
+    column, X_shm_name, covars_shm_name, X_shape, covars_shape, X_dtype, covars_dtype = args
 
-#     for column in np.arange(X.shape[1]):
-#         lr = LinearRegression()
+    # Attach to shared memory
+    X_shm = shared_memory.SharedMemory(name=X_shm_name)
+    covars_shm = shared_memory.SharedMemory(name=covars_shm_name)
 
-#         # drop rows in covariates and X if missing values for predictor in X
-#         not_nan_bool = ~np.isnan(X[:, column])
-#         lr.fit(covars[not_nan_bool, :], X[not_nan_bool, column])
+    X = np.ndarray(X_shape, dtype=X_dtype, buffer=X_shm.buf)
+    covars = np.ndarray(covars_shape, dtype=covars_dtype, buffer=covars_shm.buf)
 
-#         betas.append(lr.coef_.reshape(-1, 1))
-
-#     return np.hstack(betas).astype(np.float32)
-
-def process_column(args):
-    column, X, covars = args
+    # Process column as usual
     lr = LinearRegression()
-
-    # drop rows in covariates and X if missing values for predictor in X
     not_nan_bool = ~np.isnan(X[:, column])
     lr.fit(covars[not_nan_bool, :], X[not_nan_bool, column])
-
     return lr.coef_.reshape(-1, 1)
 
+
 def run_regressions(X, covars, cores=5, report_interval=10000):
-    # Prepare arguments for each column
-    args = [(column, X, covars) for column in np.arange(X.shape[1])]
+    # Create shared memory for X and covars
+    X_shared = shared_memory.SharedMemory(create=True, size=X.nbytes)
+    covars_shared = shared_memory.SharedMemory(create=True, size=covars.nbytes)
 
-    # Progress tracking
-    total_columns = X.shape[1]
+    # Copy data to shared memory
+    X_shm = np.ndarray(X.shape, dtype=X.dtype, buffer=X_shared.buf)
+    X_shm[:] = X[:]
+    covars_shm = np.ndarray(covars.shape, dtype=covars.dtype, buffer=covars_shared.buf)
+    covars_shm[:] = covars[:]
 
-    def process_and_report(args):
-        column, X, covars = args
-        result = process_column(args)
+    # Arguments only include indices
+    args = [(column, X_shared.name, covars_shared.name, X.shape, covars.shape, X.dtype, covars.dtype) 
+            for column in range(X.shape[1])]
 
-        # Print progress every `report_interval` columns
-        if column % report_interval == 0:
-            print(f"Processed {column}/{total_columns} columns")
-
-        return result
-
-    # Use ProcessPoolExecutor for parallel processing
     print('\n--> Beginning processing log for covariate adjustment...')
     with ProcessPoolExecutor(max_workers=cores) as executor:
-        betas = list(executor.map(process_and_report, args))
+        betas = list(executor.map(process_column_with_shm, args))
 
-    # Combine results while preserving order
+    # Free shared memory
+    X_shared.close()
+    X_shared.unlink()
+    covars_shared.close()
+    covars_shared.unlink()
+
     return np.hstack(betas).astype(np.float32)
 
 
@@ -107,41 +103,94 @@ def calculate_betas_for_x(X, covars, cores=5):
 
 
 def calculate_betas_for_y(y, covars, method='logistic'):
+    # Shared memory setup (if not already done)
+    covars_shared = shared_memory.SharedMemory(create=True, size=covars.nbytes)
+    covars_shm = np.ndarray(covars.shape, dtype=covars.dtype, buffer=covars_shared.buf)
+    covars_shm[:] = covars[:]
+
+    y_shared = shared_memory.SharedMemory(create=True, size=y.nbytes)
+    y_shm = np.ndarray(y.shape, dtype=y.dtype, buffer=y_shared.buf)
+    y_shm[:] = y[:]
+
+    # Perform regression (method-specific logic as in your code)
     if method == 'linear':
-        betas = LinearRegression().fit(covars, y).coef_.reshape(-1, 1)
+        betas = LinearRegression().fit(covars_shm, y_shm).coef_.reshape(-1, 1)
     elif method == 'logistic':
-        betas = LogisticRegression().fit(covars, y).coef_.reshape(-1, 1)
+        betas = LogisticRegression().fit(covars_shm, y_shm).coef_.reshape(-1, 1)
     else:
         raise ValueError(f'Method {method} for deconfounding y not recognised.')
+
+    # Cleanup shared memory
+    covars_shared.close()
+    covars_shared.unlink()
+    y_shared.close()
+    y_shared.unlink()
 
     return betas
 
 
-def calculate_residuals_for_x(X, covars, betas, chunk_size=1000):
-    X = da.from_array(X, chunks=chunk_size)
-    covars = da.from_array(covars, chunks=chunk_size)
-    betas = da.from_array(betas, chunks=chunk_size)
+def calculate_residuals_for_x(X, covars, betas):
+    # Setup shared memory for X
+    X_shared = shared_memory.SharedMemory(create=True, size=X.nbytes)
+    X_shm = np.ndarray(X.shape, dtype=X.dtype, buffer=X_shared.buf)
+    X_shm[:] = X[:]
 
-    cov_dot_beta = da.dot(covars, betas)
+    # Setup shared memory for covars
+    covars_shared = shared_memory.SharedMemory(create=True, size=covars.nbytes)
+    covars_shm = np.ndarray(covars.shape, dtype=covars.dtype, buffer=covars_shared.buf)
+    covars_shm[:] = covars[:]
 
-    assert cov_dot_beta.shape == X.shape, \
-        f'Dot product of covariates and betas needs shape {X.shape} but is shape {cov_dot_beta.shape}'
+    # Setup shared memory for betas
+    betas_shared = shared_memory.SharedMemory(create=True, size=betas.nbytes)
+    betas_shm = np.ndarray(betas.shape, dtype=betas.dtype, buffer=betas_shared.buf)
+    betas_shm[:] = betas[:]
 
-    residuals = X - cov_dot_beta
-    residuals = residuals.compute()
-    assert X.shape == residuals.shape, \
-        f'Raw and transformed X have different shapes: {X.shape} vs {residuals.shape}'
+    # Compute dot product
+    cov_dot_beta = np.dot(covars_shm, betas_shm)
+
+    # Check dimensions for safety
+    assert cov_dot_beta.shape == X_shm.shape, \
+        f"Dot product shape mismatch: Expected {X_shm.shape}, got {cov_dot_beta.shape}"
+
+    # Calculate residuals
+    residuals = X_shm - cov_dot_beta
+
+    # Cleanup shared memory
+    X_shared.close()
+    X_shared.unlink()
+    covars_shared.close()
+    covars_shared.unlink()
+    betas_shared.close()
+    betas_shared.unlink()
 
     return residuals.astype(np.float32)
 
 
-def calculate_residuals_for_y(y, cov, betas):
-    cov_dot_beta = np.dot(cov, betas)  # pulled into separate line for sanity checking dimensions
+def calculate_residuals_for_y(y, covars, betas):
+    # Shared memory setup
+    covars_shared = shared_memory.SharedMemory(create=True, size=covars.nbytes)
+    covars_shm = np.ndarray(covars.shape, dtype=covars.dtype, buffer=covars_shared.buf)
+    covars_shm[:] = covars[:]
 
-    assert cov_dot_beta.shape == y.shape, \
-        f'Dot product of covariates and betas needs shape {y.shape} but is shape {cov_dot_beta.shape}'
+    y_shared = shared_memory.SharedMemory(create=True, size=y.nbytes)
+    y_shm = np.ndarray(y.shape, dtype=y.dtype, buffer=y_shared.buf)
+    y_shm[:] = y[:]
 
-    residuals = np.subtract(y, cov_dot_beta)
+    betas_shared = shared_memory.SharedMemory(create=True, size=betas.nbytes)
+    betas_shm = np.ndarray(betas.shape, dtype=betas.dtype, buffer=betas_shared.buf)
+    betas_shm[:] = betas[:]
+
+    # Calculate residuals
+    cov_dot_beta = np.dot(covars_shm, betas_shm)
+    residuals = y_shm - cov_dot_beta
+
+    # Cleanup shared memory
+    covars_shared.close()
+    covars_shared.unlink()
+    y_shared.close()
+    y_shared.unlink()
+    betas_shared.close()
+    betas_shared.unlink()
 
     return residuals.astype(np.float32)
 

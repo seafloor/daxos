@@ -5,6 +5,7 @@ import scipy.stats as sp
 from dask.distributed import wait
 from sklearn.model_selection import ParameterSampler
 from sklearn.metrics import roc_auc_score, mean_squared_error
+from glob import glob
 import pathlib
 import numpy as np
 import xgboost as xgb
@@ -52,10 +53,18 @@ def map_x_y_partitions_to_workers(client, X, y, verbose=True):
     return mapping
 
 
-def persist_daskdmatrix(client, X, y, feature_names=None, manually_map_to_workers=True, method='persist'):
+def persist_daskdmatrix(client, X, y, feature_names=None, manually_map_to_workers=True, method='persist', gpu=True):
     if feature_names is not None:
         assert len(feature_names) == X.shape[1], \
             f'len(feature_names) of {len(feature_names)} does not match no columns in X of {X.shape}'
+    
+    if gpu:
+        print('Persisting for GPUs - forcing dask worker scheduling rather than manually mapping')
+        manually_map_to_workers = False
+        # worker_info = client.scheduler_info()['workers']
+        # gpu_workers = [w for w in worker_info.values() if 'gpu' in w.get('resources', {})]
+        # if not gpu_workers:
+        #     raise ValueError("GPU training requested but no GPU workers found")
 
     if manually_map_to_workers:
         mapping = map_x_y_partitions_to_workers(client, X, y)
@@ -74,7 +83,10 @@ def persist_daskdmatrix(client, X, y, feature_names=None, manually_map_to_worker
             wait(X)
             wait(y)
 
-            dtrain = xgb.dask.DaskDMatrix(client, X, y, feature_names=feature_names)
+            if gpu:
+                dtrain = xgb.dask.DaskQuantileDMatrix(client, X, y, feature_names=feature_names)
+            else:
+                dtrain = xgb.dask.DaskDMatrix(client, X, y, feature_names=feature_names)
     else:
         if method == 'persist':
             X.persist()
@@ -86,7 +98,10 @@ def persist_daskdmatrix(client, X, y, feature_names=None, manually_map_to_worker
         wait(X)
         wait(y)
 
-        dtrain = xgb.dask.DaskDMatrix(client, X, y, feature_names=feature_names)
+        if gpu:
+            dtrain = xgb.dask.DaskQuantileDMatrix(client, X, y, feature_names=feature_names)
+        else:
+            dtrain = xgb.dask.DaskDMatrix(client, X, y, feature_names=feature_names)
 
     return dtrain
 
@@ -128,18 +143,23 @@ def score_model(y_true, y_pred, score_method='AUC'):
 
 
 def fit_dask_xgb(client, data, params, xgb_model=None, n_threads=1, eval_metric='logloss', loss='binary:logistic',
-                 verbose=False, tree_method='hist'):
+                 verbose=False, tree_method='gpu_hist', gpu=True):
+    
+    xgb_args = {
+        'verbosity': int(verbose),
+        'tree_method': tree_method,
+        'nthread': n_threads,
+        'single_precision_histogram': True,
+        'eval_metric': eval_metric,
+        'objective': loss,
+        'max_depth': params['max_depth'],
+        'subsample': params['subsample'],
+        'colsample_bytree': params['colsample_bytree'],
+        'eta': params['eta']
+    }
+
     output = xgb.dask.train(client,
-                            {'verbosity': int(verbose),
-                             'tree_method': tree_method,
-                             'nthread': n_threads,
-                             'single_precision_histogram': True,
-                             'eval_metric': eval_metric,
-                             'objective': loss,
-                             'max_depth': params['max_depth'],
-                             'subsample': params['subsample'],
-                             'colsample_bytree': params['colsample_bytree'],
-                             'eta': params['eta']},
+                            xgb_args,
                             data,
                             num_boost_round=params['n_boost_round'],
                             xgb_model=xgb_model,
@@ -154,7 +174,7 @@ def fit_dask_xgb(client, data, params, xgb_model=None, n_threads=1, eval_metric=
 
 
 def fit_one_round_cv(client, X, y, params, n_fold=5, score_method='AUC', colnames=None,
-                     manually_map_to_workers=False, **fit_kwargs):
+                     manually_map_to_workers=False, gpu=True, **fit_kwargs):
     folds = chunked_kfold_split(X, y, n_splits=n_fold)
     scores, y_pred, y_true = [], [], []
     for i, f in enumerate(folds):
@@ -163,10 +183,11 @@ def fit_one_round_cv(client, X, y, params, n_fold=5, score_method='AUC', colname
 
         print(f'Creating Dask DMatrices in CV fold number {i}')
         dtrain = persist_daskdmatrix(client, X_train, y_train, feature_names=colnames,
-                                     manually_map_to_workers=manually_map_to_workers)
-        _ = persist_daskdmatrix(client, X_test, y_test, feature_names=colnames)
+                                     manually_map_to_workers=manually_map_to_worker,
+                                     gpu=gpu)
+        _ = persist_daskdmatrix(client, X_test, y_test, feature_names=colnames, gpu=gpu)
 
-        bst, _ = fit_dask_xgb(client, data=dtrain, params=params, **fit_kwargs)
+        bst, _ = fit_dask_xgb(client, data=dtrain, params=params, gpu=gpu, **fit_kwargs)
 
         test_pred = xgb.dask.predict(client, bst, X_test)
 
@@ -178,7 +199,7 @@ def fit_one_round_cv(client, X, y, params, n_fold=5, score_method='AUC', colname
 
 
 def incremental_fit_xgb(client, X, y, colnames, best_params, start_round, out_dir, out_prefix, n_boost_per_round=10,
-                        row_chunks=100, **fit_kwargs):
+                        row_chunks=100, gpu=True, **fit_kwargs):
     print('\n--> Starting incremental learning')
     read_subsample = best_params['subsample']
 
@@ -206,8 +227,8 @@ def incremental_fit_xgb(client, X, y, colnames, best_params, start_round, out_di
         print(f'Starting boosting iteration {i + 1} of {len(bst_range)}, building {n_boost_per_round} trees per round')
         X_refit, _, y_refit, _ = chunked_train_test_split(X, y, row_chunks, read_subsample)
 
-        dtrain = persist_daskdmatrix(client, X_refit, y_refit, feature_names=colnames)
-        bst, history = fit_dask_xgb(client, data=dtrain, params=best_params, xgb_model=bst, **fit_kwargs)
+        dtrain = persist_daskdmatrix(client, X_refit, y_refit, feature_names=colnames, gpu=gpu)
+        bst, history = fit_dask_xgb(client, data=dtrain, params=best_params, xgb_model=bst, gpu=gpu, **fit_kwargs)
         print(f"Number of trees now in booster: {len(bst.trees_to_dataframe().Tree.unique())}")
 
         bst.save_model(model_path)
@@ -229,8 +250,8 @@ def xgb_dask_cv(client, X, y, params, n_fold=5, colnames=None, boost_rounds=1000
         X_test, y_test = X[f[1], :], y[f[1], :]
 
         print(f'Creating Dask DMatrices in CV fold number {i}')
-        dtrain = persist_daskdmatrix(client, X_train, y_train, feature_names=colnames)
-        dtest = persist_daskdmatrix(client, X_test, y_test, feature_names=colnames)
+        dtrain = persist_daskdmatrix(client, X_train, y_train, feature_names=colnames, gpu=gpu)
+        dtest = persist_daskdmatrix(client, X_test, y_test, feature_names=colnames, gpu=gpu)
 
         print(f'Running HP search in CV for {len(params)} params')
         for iter, p in enumerate(params):
@@ -293,6 +314,37 @@ def get_best_cv(cv_scores, score_method='AUC', verbose=True):
     return best_run_params, best_run_score
 
 
+def read_hp_search_results(hp_search_file):
+    if any([os.path.isfile(hp_search_file), os.path.isdir(hp_search_file)]):
+        if os.path.isdir(hp_search_file):
+            print('\n--> HP search results directory found')
+            print('Reading in and merging all .CSV files in directory')
+            hp_files = sorted(glob(os.path.join(hp_search_file, '*.csv')))
+            hp_search_values = pd.concat([pd.read_csv(f) for f in hp_files], axis=0)
+        elif os.path.isfile(hp_search_file):
+            print('\n--> HP search results file found')
+            hp_search_values = pd.read_csv(hp_search_file)
+        else:
+            raise ValueError(f'Hyperparameter path not file or dir: {hp_search_file}')
+
+        # set sorting of CV results to be descending only if using AUC, else ascending
+        score_method = hp_search_values['metric'].iat[0]
+        sort_ascending = score_method != 'AUC'
+        hp_search_values = (hp_search_values.sort_values('score', ascending=sort_ascending)
+                                            .reset_index(drop=True))
+
+        print('Top HP combinations from search:\n')
+        print(hp_search_values.head())
+
+        hp_search_values = hp_search_values.iloc[0, :].to_dict()
+        int_cols = ['max_depth', 'n_boost_round']
+        best_params = {key: (int(value) if key in int_cols else value) for key, value in hp_search_values.items()}
+    else:
+        raise FileNotFoundError('No HP search results file/directory found')
+
+    return best_params
+
+
 def chunked_train_test_split(X, y, row_chunks='auto', train_size=0.8):
     row_chunks = X.chunksize[0] if row_chunks == 'auto' else row_chunks
     assert all([train_size >= 0.1, train_size <= 0.9]), 'Training fraction must be between 0.1 and 0.9, inclusive.'
@@ -342,7 +394,7 @@ def chunked_kfold_split(X, y, n_splits, row_chunks='auto', dask=False, verbose=T
 
 
 def cv_xgb(client, X, y, cv_subsample, n_folds, n_iter_search, boost_rounds=1000, min_subsample=0.7, max_subsample=0.7,
-           score_method='AUC', **fit_kwargs):
+           score_method='AUC', gpu=True, **fit_kwargs):
     if cv_subsample > 0:
         X_train, y_train = X[:cv_subsample, :], y[:cv_subsample, :]
         print('\n--> Downsampled dataset for HP tuning', X_train, y_train)
@@ -352,7 +404,7 @@ def cv_xgb(client, X, y, cv_subsample, n_folds, n_iter_search, boost_rounds=1000
     print(f'\n--> Running {n_folds}-fold cross-validation with random search')
     params = set_random_search_distributions(n_iter_search, min_subsample, max_subsample)
     scores, y_pred = xgb_dask_cv(client, X_train, y_train, params, n_fold=n_folds, boost_rounds=boost_rounds,
-                                 score_method=score_method, **fit_kwargs)
+                                 score_method=score_method, gpu=gpu, **fit_kwargs)
     best_params, best_score = get_best_cv(scores)
 
     return best_params, best_score, scores, y_pred, params

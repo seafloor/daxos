@@ -6,10 +6,11 @@ import numpy as np
 
 
 def run_cv_and_platt_scale(client, X, y_adjusted, y_binary, params, n_fold=5, score_method='AUC',
-                           manually_map_to_workers=False, **fit_kwargs):
+                           manually_map_to_workers=False, gpu=True, **fit_kwargs):
     print('Re-running XGBoost CV on best params to get test fold predictions')
     scores, predictions, y_true = fit_one_round_cv(client, X, y_adjusted, params, n_fold, score_method,
-                                                   manually_map_to_workers=manually_map_to_workers, **fit_kwargs)
+                                                   manually_map_to_workers=manually_map_to_workers,
+                                                   gpu=gpu, **fit_kwargs)
 
     # concatenate predictions
     X_stacked = np.hstack(predictions).reshape(-1, 1)

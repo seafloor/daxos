@@ -1,10 +1,10 @@
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.expanduser('~'), 'daxos'))
-from daxg.utils import parse_bool
-from daxg.distribute import spin_cluster, scale_cluster
-from daxg.crossvalidate import cv_xgb
-from daxg.read import read_ml
+from daxos.utils import parse_bool
+from daxos.distribute import spin_cluster, scale_cluster
+from daxos.crossvalidate import cv_xgb
+from daxos.read import read_ml
 from dask.distributed import Client
 import pathlib
 import argparse

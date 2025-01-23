@@ -1,14 +1,14 @@
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.expanduser('~'), 'daxos'))
-from daxg.read import read_ml, save_booster
-from daxg.explain import collect_importances, subset_predictors
-from daxg.crossvalidate import read_hp_search_results, incremental_fit_xgb, fit_dask_xgb, persist_daskdmatrix, score_model
-from daxg.utils import parse_bool
-from daxg.scale import run_cv_and_platt_scale
+from daxos.read import read_ml, save_booster
+from daxos.explain import collect_importances, subset_predictors
+from daxos.crossvalidate import read_hp_search_results, incremental_fit_xgb, fit_dask_xgb, persist_daskdmatrix, score_model
+from daxos.utils import parse_bool
+from daxos.scale import run_cv_and_platt_scale
 import xgboost as xgb
 from dask.distributed import Client
-from daxg.distribute import spin_cluster, scale_cluster
+from daxos.distribute import spin_cluster, scale_cluster
 import dask.array as da
 import pathlib
 import joblib
@@ -23,7 +23,7 @@ import h5py
 def main(client, X, y, colnames, n_folds=5, increment_refit=False, row_chunks=100, out_dir=None, out_prefix=None,
          incremental_start_round=1, incremental_n_boost_per_round=1, run_shap_main=False, run_shap_inter=False,
          hp_search_file='', platt_scale=False, y_binary=None, score_method='AUC',
-         n_booster_overide=None, **fit_kwargs):
+         n_booster_overide=None, gpu=True, **fit_kwargs):
 
     # read CV results and assume sort order is descending only if using AUC, else ascending (e.g. for RMSE)
     best_params = read_hp_search_results(hp_search_file)
@@ -42,14 +42,14 @@ def main(client, X, y, colnames, n_folds=5, increment_refit=False, row_chunks=10
         incremental_outdir = os.path.join(out_dir, 'refit')
         dtrain, bst, history, best_params = incremental_fit_xgb(
             client, X, y, colnames, best_params, incremental_start_round, incremental_outdir, out_prefix,
-            incremental_n_boost_per_round, row_chunks, **fit_kwargs
+            incremental_n_boost_per_round, row_chunks, gpu=gpu, **fit_kwargs
         )
     else:
         print('\nCreating DMatrix for XGB')
-        dtrain = persist_daskdmatrix(client, X, y, feature_names=colnames)
+        dtrain = persist_daskdmatrix(client, X, y, feature_names=colnames, gpu=gpu)
 
         print('\nTraining...')
-        bst, history = fit_dask_xgb(client, dtrain, best_params, **fit_kwargs)
+        bst, history = fit_dask_xgb(client, dtrain, best_params, gpu=gpu, **fit_kwargs)
 
         print('\n--> Saving XGBoost model from first refit')
         first_refit_save_dir = os.path.join(out_dir, 'refit', 'models', f'{out_prefix}_origrefit_xgbmodel.json')
@@ -70,10 +70,10 @@ def main(client, X, y, colnames, n_folds=5, increment_refit=False, row_chunks=10
         print(f'Saved to path: {cols_save_dir}')
 
     print('\nCreating reduced DMatrix for XGB and SHAP')
-    dtrain = persist_daskdmatrix(client, X_refit, y, feature_names=columns_used_in_refit)
+    dtrain = persist_daskdmatrix(client, X_refit, y, feature_names=columns_used_in_refit, gpu=gpu)
 
     print('\nTraining on reduced DMatrix...')
-    bst, history = fit_dask_xgb(client, dtrain, best_params, **fit_kwargs)
+    bst, history = fit_dask_xgb(client, dtrain, best_params, gpu=gpu, **fit_kwargs)
 
     print('\n--> Predicting back on the train set (internal validation, results are biased)...')
     prediction = xgb.dask.predict(client, bst, dtrain)
@@ -98,7 +98,7 @@ def main(client, X, y, colnames, n_folds=5, increment_refit=False, row_chunks=10
         assert y_binary is not None, 'Supply original (unadjusted) y to y_binary if using platt_scale=True'
         del dtrain
         platt_model = run_cv_and_platt_scale(client, X_refit, y, y_binary, best_params, n_folds, score_method,
-                                             manually_map_to_workers=True, **fit_kwargs)
+                                             manually_map_to_workers=True, gpu=gpu, **fit_kwargs)
         platt_save_dir = os.path.join(out_dir, 'refit', 'models', f'{out_prefix}_shaprefit_plattscalemodel.json')
         joblib.dump(platt_model, platt_save_dir)
         if os.path.exists(platt_save_dir):
@@ -158,6 +158,8 @@ if __name__ == '__main__':
                         help='Will be overriden with "reg:squarederror" if covar supplied')
     parser.add_argument('--gpu', type=str, default='False',
                         help='Use GPUs if True.')
+    parser.add_argument('--gpu_resources', type=str, default='gpu:1',
+                        help='Specify as <resource>:<type>:<count>, where type is optional. Passed to --gres=')
     parser.add_argument('--interface', type=str, default='ib0',
                         help='Networking interface for connection between workers. Uses "lo" if --cluster is "local"')
     parser.add_argument('--xkey', type=str, default='x',
@@ -178,7 +180,6 @@ if __name__ == '__main__':
 
     if gpu:
         tree_method = 'gpu_hist'
-        raise NotImplementedError('GPUs not supported yet')
     else:
         tree_method = 'hist'
 
@@ -197,8 +198,9 @@ if __name__ == '__main__':
     if args.seed > 0:
         np.random.seed(args.seed)
 
-    with spin_cluster(args.cluster, args.n_threads_per_worker, args.local_dir, 1, args.mem_per_worker,
-                      args.time_per_worker, interface, queue) as cluster:
+    with spin_cluster(cluster_type=args.cluster, n_threads=args.n_threads_per_worker,local_dir=args.local_dir, processes=1, 
+                      mem=args.mem_per_worker, walltime=args.time_per_worker, interface=interface, queue=queue, gpu=gpu,
+                      gpu_resources=args.gpu_resources) as cluster:
         scale_cluster(cluster, args.cluster, args.n_workers_in_cluster, args.n_threads_per_worker, args.mem_per_worker)
         with Client(cluster) as client:
             # print(f'Waiting to scale up to {args.n_workers_in_cluster} workers before continuing...')
@@ -226,7 +228,7 @@ if __name__ == '__main__':
                     args.row_chunk_size, args.out, args.prefix, args.incremental_start_round,
                     args.incremental_n_boost_per_round, run_shap_main, run_shap_inter, args.hp_search_results,
                     platt_scale, y_binary=y_binary, score_method=score_method,
-                    n_booster_overide=args.n_booster_overide, **fit_kwargs
+                    n_booster_overide=args.n_booster_overide, gpu=gpu, **fit_kwargs
                 )
 
     t1 = time.time()

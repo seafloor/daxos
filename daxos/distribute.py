@@ -1,16 +1,17 @@
 from dask.distributed import LocalCluster
+from dask_cuda import LocalCUDACluster
 from dask_jobqueue import SLURMCluster
 import pathlib
 import os
 
 
 def spin_cluster(cluster_type, n_threads, local_dir, processes=1, mem='10G', walltime='01:00:00', interface='ib0',
-                 queue=None, logdir=None):
+                 queue=None, logdir=None, gpu=True, gpu_resources='gpu:1'):
     walltime = walltime.replace('_', ':')
 
     # set dir for logging (worker nodes)
     if logdir is None:
-        logdir = os.path.join(os.expanduser('~'), 'dask_logs')
+        logdir = os.path.join(os.path.expanduser('~'), 'dask_logs')
         print(f'No directory given for logs - saving to {logdir}')
     else:
         logdir = os.path.join(logdir, 'dask_logs')
@@ -19,24 +20,31 @@ def spin_cluster(cluster_type, n_threads, local_dir, processes=1, mem='10G', wal
     pathlib.Path(logdir).mkdir(parents=True, exist_ok=True)
 
     if cluster_type == 'local':
-        print('\n--> Starting LocalCluster with 1 worker and {} threads'.format(n_threads))
-        return LocalCluster(n_workers=1, threads_per_worker=n_threads, local_directory=local_dir)
+        print(f"\n--> Starting LocalCluster with 1 worker and {n_threads} threads on {'GPU' if gpu else 'CPU'}")
+        if gpu:
+            return LocalCUDACluster(local_directory=local_dir)
+        else:
+            return LocalCluster(n_workers=1, threads_per_worker=n_threads, local_directory=local_dir)
     elif cluster_type == 'distributed':
-        print(f'\n--> Starting SLURMCluster using {interface} interface '
-              f'with {n_threads} threads, {mem} mem and {walltime} walltime')
+        print(f"\n--> Starting SLURMCluster using {interface} interface "
+              f"with {n_threads} threads, {mem} mem and {walltime} walltime "
+              f"on {'GPU' if gpu else 'CPU'}")
+        
+        job_extra = [f"--output={logdir}/worker_%j.out", f"--error={logdir}/worker_%j.err"]
+        if gpu:
+            print('Requesting GPU resources as {gpu_resources}')
+            job_extra.append(f"--gres={gpu_resources}")
+
         return SLURMCluster(
-            cores=n_threads,
-            processes=processes,
-            memory=mem,
-            walltime=walltime,
-            local_directory=local_dir,
-            interface=interface,
-            queue=queue,
-            job_extra=[
-                f"--output={logdir}/worker_%j.out",
-                f"--error={logdir}/worker_%j.err"
-            ]
-        )
+                cores=n_threads,
+                processes=processes,
+                memory=mem,
+                walltime=walltime,
+                local_directory=local_dir,
+                interface=interface,
+                queue=queue,
+                job_extra=job_extra
+            )
     else:
         raise ValueError('Cluster type not recognised. Must be local or distributed.')
 

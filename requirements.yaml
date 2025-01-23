@@ -28,7 +28,10 @@ dependencies:
   - statsmodels
   - zarr
   - pytables
-  - xgboost=1.5.1
+  - xgboost=1.7.6
   - pip:
+      - ipython
+      - memory_profiler
+      - py3nvml 
       - pytest
       - tqdm

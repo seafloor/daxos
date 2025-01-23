@@ -270,7 +270,7 @@ chmod 700 ${basedir}/job_number_${SLURM_JOB_ID}
 
 # setup python env
 # change to your module/conda env
-module load anaconda/3
+module load conda/23.11-py311
 source activate daxos
 
 # print node name for setting up dask dashboard

@@ -2,6 +2,9 @@
 workflows/preprocessing/.snakemake
 workflows/training/.snakemake
 workflows/training/slurm*
+examples/data/large*
+examples/data/example_data_test_covars.txt
+examples/data/example_data_train_covars.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

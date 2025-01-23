@@ -9,14 +9,17 @@ import statsmodels.api as sm
 
 def create_dummy_snp_names(p=10):
     np.random.seed(10)
-    snp_columns = zip(np.random.randint(10000, 1000000, size=p-2),
+    snp_columns = zip(np.random.choice(np.arange(10000, 1000000), size=p-2, replace=False),
                       np.random.choice(['A', 'C', 'G', 'T'], replace=True, size=p-2))
     
     return [f'rs{i}_{s}' for i, s in snp_columns] + ['rs7412_T', 'rs429358_C']
 
 
-def create_dummy_fam_file(n=100):
-    ids = np.random.randint(10000, 20000, size=n)
+def create_dummy_fam_file(n=100, verbose=True):
+    if verbose:
+        print('Creating dummy family file...')
+    
+    ids = np.random.choice(np.arange(10000, 1000000), size=n, replace=False)
     fam = pd.DataFrame({
         'FID': ids,
         'IID': ids, 
@@ -91,10 +94,10 @@ def add_adjustment(X, y, loc=0, scale=0.1):
     assert y.shape == y_residuals.shape, f'Shape of y {y.shape} and y_residuals {y_residuals.shape} are not equal'
     print('Adjusted X/y match original X/y shape')
 
-    return X_residuals, y_residuals
+    return X_residuals, y_residuals, covars
 
 
-def save_hdf5(out_name, X, y, X_adjusted, y_adjusted, snp_names):
+def save_hdf5(out_name, X, y, X_adjusted, y_adjusted, snp_names, row_names):
     print(f'\n--> Saving data to {out_name}')
     # Create and save X and y
     X = da.from_array(X, chunks=(100, X.shape[1]))
@@ -109,9 +112,7 @@ def save_hdf5(out_name, X, y, X_adjusted, y_adjusted, snp_names):
     da.to_hdf5(out_name, {'y_adjusted': y_adjusted}, chunks=(100, 1))
 
     # Create and save rows and cols
-    print('Creating dummy family file...')
-    rows = create_dummy_fam_file(n = X.shape[0])
-    rows.to_hdf(out_name, 'rows')
+    row_names.to_hdf(out_name, 'rows')
     
     print('Saving SNP names...')
     cols = pd.DataFrame({'SNP': snp_names})
@@ -164,6 +165,18 @@ def check_ors_reasonable(X, y, expected_or, tol=0.5):
         print(actual_or)
 
 
+def save_covars(out, covar_data, fam_file):
+    base_name, _ = os.path.splitext(out)
+    out = f'{base_name}_covars.txt'
+
+    covar_data = pd.concat([
+        fam_file.loc[:, ['FID', 'IID']],
+        pd.DataFrame(covar_data, columns = ['COV1', 'COV2', 'COV3'])
+    ], axis=1)
+
+    covar_data.to_csv(out, index=False, sep='\t')
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Create simulation data for genetic analysis.',
                                      epilog='Author: Matthew Bracher-Smith (smithmr5@cardiff.ac.uk)')
@@ -177,8 +190,11 @@ if __name__ == '__main__':
     print(f'Parameters: n={args.n}, p={args.p}, seed={args.seed}, output_file={args.output_file}')
 
     X, y, snp_names = create_simple_sim(n=args.n, p=args.p, seed=args.seed)
-    X_adjusted, y_adjusted = add_adjustment(X, y)
-    save_hdf5(args.output_file, X, y, X_adjusted, y_adjusted, snp_names)
+    X_adjusted, y_adjusted, covars = add_adjustment(X, y)
+    rows = create_dummy_fam_file(n = X.shape[0])
+
+    save_hdf5(args.output_file, X, y, X_adjusted, y_adjusted, snp_names, rows)
+    save_covars(out = args.output_file, covar_data = covars, fam_file = rows)
 
     if os.path.exists(args.output_file):
         print(f'\nSimulation data saved successfully to {args.output_file}')

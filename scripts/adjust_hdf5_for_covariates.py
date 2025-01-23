@@ -5,8 +5,8 @@ import dask.array as da
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.expanduser('~'), 'daxos'))
-from dask_xgboost_slurm import read, deconfound
-from dask_xgboost_slurm.utils import parse_bool
+from daxos import read, deconfound
+from daxos.utils import parse_bool
 from sklearn.preprocessing import StandardScaler
 
 

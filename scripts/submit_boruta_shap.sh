@@ -20,7 +20,7 @@ start=`date +%s`
 
 # setup python env
 # set to module/conda envs you have
-module load anaconda3/2020.02
+module load conda/23.11-py311
 conda activate daxos
 
 # run boruta on shap values

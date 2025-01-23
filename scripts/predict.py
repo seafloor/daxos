@@ -2,14 +2,14 @@ import sys
 import os
 import time
 sys.path.insert(0, os.path.join(os.path.expanduser('~'), 'daxos'))
-from daxg.read import read_ml, load_booster
-from daxg.explain import collect_importances, subset_predictors
-from daxg.utils import parse_bool, yhat, force_none_if_str_empty
-from daxg.distribute import spin_cluster, scale_cluster
-from daxg.crossvalidate import persist_daskdmatrix, score_model
+from daxos.read import read_ml, load_booster
+from daxos.explain import collect_importances, subset_predictors
+from daxos.utils import parse_bool, yhat, force_none_if_str_empty
+from daxos.distribute import spin_cluster, scale_cluster
+from daxos.crossvalidate import persist_daskdmatrix, score_model
 from dask.distributed import Client
 import dask.array as da
-from daxg.deconfound import adjust_for_covars, read_betas, get_x_y_save_paths
+from daxos.deconfound import adjust_for_covars, read_betas, get_x_y_save_paths
 import pathlib
 import numpy as np
 import joblib
@@ -55,6 +55,8 @@ if __name__ == '__main__':
                              'the test set predictions from XGBoost as input.')
     parser.add_argument('--gpu', type=str, default='False',
                         help='Use GPUs if True.')
+    parser.add_argument('--gpu_resources', type=str, default='gpu:1',
+                        help='Specify as <resource>:<type>:<count>, where type is optional. Passed to --gres=')
     parser.add_argument('--interface', type=str, default='None',
                         help='Networking interface for connection between workers. Uses "lo" if --cluster is "local"')
     parser.add_argument('--xkey', type=str, default='x',
@@ -82,13 +84,11 @@ if __name__ == '__main__':
 
     print(f'\nSetting score_method as {score_method} because platt_scale_model is {platt_scale_model}\n')
 
-    if gpu:
-        raise NotImplementedError('GPUs not supported yet')
-
     t0 = time.time()
 
-    with spin_cluster(args.cluster, args.n_threads_per_worker, args.local_dir, 1, args.mem_per_worker,
-                      args.time_per_worker, interface, queue) as cluster:
+    with spin_cluster(cluster_type=args.cluster, n_threads=args.n_threads_per_worker,local_dir=args.local_dir, processes=1, 
+                      mem=args.mem_per_worker, walltime=args.time_per_worker, interface=interface, queue=queue, gpu=gpu,
+                      gpu_resources=args.gpu_resources) as cluster:
         scale_cluster(cluster, args.cluster, args.n_workers_in_cluster, args.n_threads_per_worker, args.mem_per_worker)
 
         with Client(cluster) as client:
@@ -120,7 +120,7 @@ if __name__ == '__main__':
                 else:
                     FileNotFoundError(f'XGB model file {model_path} not found')
 
-                dtest = persist_daskdmatrix(client, X, y, feature_names=out_cols)
+                dtest = persist_daskdmatrix(client, X, y, feature_names=out_cols, gpu=gpu)
 
                 print('\n--> Predicting...')
                 prediction = xgb.dask.predict(client, bst, dtest)

@@ -16,6 +16,8 @@ DAXOS is a Python library designed to efficiently run Dask and XGBoost on SNP da
 To install the required dependencies, use the provided `requirements.yaml` file with conda:
 
 ```sh
+module load your/base/conda/module
+conda config --set channel_priority strict
 conda env create -f requirements.yaml
 conda activate daxos
 ```
@@ -25,6 +27,63 @@ You will also need to make the package available in the python path, is it's not
 ```sh
 cd your/install/dir/daxos
 export PYTHONPATH=$PYTHONPATH:$(pwd)
+```
+
+## GPU support
+
+On an HPC cluster you likely don't have GPUs on the head node, so by default pip-installed xgboost will not have gpu support. This is easy to fix by building manually. The example below should be adapted to the modules available on your cluster. Note if you've already run the conda installation above then you'll need to uninstall with `conda remove xgboost`. You may need to also cleanup with `conda clean --all` and delete the python shared object for the CPU xgboost with `rm -f .conda/envs/daxos/lib/libxgboost.so` to avoid conflicts.
+
+*On the head node:*
+
+```
+git clone --branch release_1.7.6 https://github.com/dmlc/xgboost.git
+cd xgboost
+git submodule update --init --recursive
+```
+
+*Access a GPU node, e.g.:*
+
+```
+salloc --time=01:00:00 --nodes=1 --ntasks=1 --tasks-per-node=1 --mem=20G --job-name=xgbinstall --gres=gpu:1 --cpus-per-task=1
+srun --pty /bin/bash
+```
+
+*On the compute node with GPUs:*
+
+```
+module load gcc/11.3.1/compilers
+module load nvidia/cuda/12.0/compilers
+
+mkdir build
+cd build
+cmake .. -DUSE_CUDA=ON -DBUILD_WITH_CUDA_CUB=ON
+make -j$(nproc)
+```
+
+*Install the built package:*
+
+```
+module load conda/23.11-py311
+conda activate daxos
+
+cd ~/xgboost/python-package
+python setup.py install
+
+```
+
+*Check version and GPU support*
+
+```
+# get version
+python3 -c 'import xgboost as xgb; print(xgb.__version__)'
+
+# basic GPU check
+cd ~/daxos/examples/gpu
+python3 minimal_gpu_check.py
+
+# more detailed GPU check
+cd ~/daxos/examples/gpu
+python3 detailed_gpu_check.py
 ```
 
 ## Usage

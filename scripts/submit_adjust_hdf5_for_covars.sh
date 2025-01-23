@@ -14,7 +14,7 @@
 
 # setup python env
 # change to module/conda envs you have
-module load anaconda3/2020.02
+module load conda/23.11-py311
 conda activate daxos
 
 # cd to dir - assuming installed in home dir here
