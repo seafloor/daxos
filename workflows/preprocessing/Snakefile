@@ -1,7 +1,7 @@
 import os
 
 configfile: "config.yaml"
-localrules: download_plink1, download_plink2
+localrules: download_plink1, download_plink2, copy_config
 
 PGEN_EXT = ["pgen", "pvar", "psam", "log"]
 BED_EXT = ["bed", "bim", "fam", "log"]
@@ -14,6 +14,7 @@ OUTDIR = f"{OUTROOT}/split_{SEED}"
 
 rule all:
     input:
+        f"{OUTDIR}/logs/config.yaml",  # Copy of config.yaml in logs dir
         f"{OUTDIR}/train/{IN_FILE}_shuffled_adjusted_train.hdf5",
         f"{OUTDIR}/test/{IN_FILE}_shuffled_adjusted_test.hdf5",
         expand(
@@ -23,6 +24,19 @@ rule all:
             infile=IN_FILE,
             ext=PGEN_EXT if config['input']['file_type'] == 'pfile' else BED_EXT
         )
+
+rule copy_config:
+    input:
+        "config.yaml"
+    params:
+        outdir=f"{OUTDIR}/logs"
+    output:
+        f"{OUTDIR}/logs/config.yaml"
+    shell:
+        """
+        mkdir -p {params.outdir}
+        cp {input} {params.outdir}
+        """
 
 rule download_plink1:
     output:

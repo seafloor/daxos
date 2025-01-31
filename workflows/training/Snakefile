@@ -1,6 +1,7 @@
 import os
 
-configfile: "config.yaml"
+localrules: copy_config
+CONFIG_PATH = f"config_{'gpu' if config.get('gpu', '') == 'True' else 'cpu'}.yaml"
 
 TRAIN_FILE = config.get("input", {}).get("data", "").get("train", "")
 TEST_FILE = config.get("input", {}).get("data", "").get("test", "")
@@ -15,6 +16,7 @@ PLATT_MODEL = (
 
 rule all:
     input:
+        f'{OUT_DIR}/logs/config.yaml',  # Copy of config.yaml in logs dir
         f'{OUT_DIR}/refit/importances/{PREFIX}_train_refit_imp.csv', # train data: importance scores
         f'{OUT_DIR}/refit/importances/{PREFIX}_train_refit_shap_colnames.csv',
         directory(f'{OUT_DIR}/refit/importances/{PREFIX}_train_refit_shap_main.zarr'),
@@ -25,6 +27,19 @@ rule all:
         f'{OUT_DIR}/predict/importances/{PREFIX}_test_predict_imp.csv', # test data: importance scores
         f'{OUT_DIR}/predict/importances/{PREFIX}_test_predict_shap_colnames.csv',
         directory(f'{OUT_DIR}/predict/importances/{PREFIX}_test_predict_shap_main.zarr')
+
+rule copy_config:
+    input:
+        CONFIG_PATH  # Use the captured path
+    params:
+        outdir=f"{OUT_DIR}/logs"
+    output:
+        f"{OUT_DIR}/logs/config.yaml"
+    shell:
+        """
+        mkdir -p {params.outdir}
+        cp {input} {output}
+        """
 
 rule run_model_refit:
     input:
@@ -41,15 +56,18 @@ rule run_model_refit:
         train_prefix=f'{PREFIX}_train_refit',
         dask_chunks=config['jobs']['dask_row_chunks'],
         hyperparams=HP_DIR,
-        gpu=config['jobs']['gpu'],
+        gpu=config['gpu'],
         gpu_resources=config['jobs']['gpu_resources'],
         xkey=config['jobs']['xkey'],
         ykey=config['jobs']['ykey'],
         worker_queue=config['jobs']['worker_queue'],
-        job_module=config['env']['conda_module'],
-        job_env=config['env']['job_env'],
+        gcc_module=config['env']['gcc_module'],
+        cuda_module=config['env']['cuda_module'],
+        conda_module=config['env']['conda_module'],
+        conda_env=config['env']['conda_env'],
         tmp_dir=f"{config['jobs']['temp_dir']}/dask_temp/{PREFIX}",
-        force_n_boosters=config['refit']['force_n_boosters']
+        force_n_boosters=config['refit']['force_n_boosters'],
+        cluster_type=config['jobs']['cluster_type']
     output:
         f'{OUT_DIR}/refit/importances/{PREFIX}_train_refit_imp.csv', # importance scores
         f'{OUT_DIR}/refit/importances/{PREFIX}_train_refit_shap_colnames.csv',
@@ -60,10 +78,36 @@ rule run_model_refit:
         temp(directory(f"{config['jobs']['temp_dir']}/dask_temp/{PREFIX}")) # dask temp dir - to be deleted
     shell:
         """
-        # load module and env
         module purge
-        module load {params.job_module}
-        conda activate {params.job_env}
+
+        echo -e "\n--> Loading Modules on Scheduler"
+
+        if [[ "{params.gpu}" == "True" ]]; then
+            echo -e "\n--> GPU version selected"
+        else
+            echo -e "\n--> CPU version selected"
+        fi
+
+        if [[ "{params.cluster_type}" == "local" ]]; then
+            module load {params.gcc_module}
+            module load {params.cuda_module}
+
+            if [[ "{params.gpu}" == "True" ]]; then
+                echo -e "\n--> Planning LocalCUDACluster"
+                echo -e "\n################################################################################"
+                echo -e "############################# Verifying GPU support ##############################"
+                nvidia-smi
+                echo -e "################################################################################"
+                echo -e "################################################################################\n"
+            else
+                echo -e "\n--> Planning LocalCluster"
+            fi
+        else
+            echo -e "\n--> Planning distributed SLURMCluster"
+        fi
+
+        module load {params.conda_module}
+        conda activate {params.conda_env}
 
         # print node name for setting up dask dashboard
         echo -e "\n################################################################################"
@@ -86,7 +130,7 @@ rule run_model_refit:
             --prefix {params.train_prefix} \
             --local_dir {params.tmp_dir} \
             --row_chunk_size {params.dask_chunks} \
-            --cluster distributed \
+            --cluster {params.cluster_type} \
             --incremental_learning False \
             --incremental_start_round 0 \
             --incremental_n_boost_per_round 10 \
@@ -98,6 +142,10 @@ rule run_model_refit:
             --gpu {params.gpu} \
             --gpu_resources {params.gpu_resources} \
             --interface None \
+            --gcc_module {params.gcc_module} \
+            --cuda_module {params.cuda_module} \
+            --conda_module {params.conda_module} \
+            --conda_env {params.conda_env} \
             --xkey {params.xkey} \
             --ykey {params.ykey} \
             --worker_queue {params.worker_queue} \
@@ -118,7 +166,7 @@ rule run_model_predict:
         time=config['predict']['time'],
         mem=config['predict']['mem'],
         workers=config['predict']['workers'],
-        gpu=config['jobs']['gpu'],
+        gpu=config['gpu'],
         gpu_resources=config['jobs']['gpu_resources'],
         xkey=config['jobs']['xkey'],
         ykey=config['jobs']['ykey'],
@@ -126,9 +174,12 @@ rule run_model_predict:
         dask_chunks=config['jobs']['dask_row_chunks'],
         out=OUT_DIR,
         test_prefix=f'{PREFIX}_test_predict',
-        job_module=config['env']['conda_module'],
-        job_env=config['env']['job_env'],
-        tmp_dir=f"{config['jobs']['temp_dir']}/dask_temp/{PREFIX}"
+        gcc_module=config['env']['gcc_module'],
+        cuda_module=config['env']['cuda_module'],
+        conda_module=config['env']['conda_module'],
+        conda_env=config['env']['conda_env'],
+        tmp_dir=f"{config['jobs']['temp_dir']}/dask_temp/{PREFIX}",
+        cluster_type=config['jobs']['cluster_type']
     output:
         temp(directory(f"{config['jobs']['temp_dir']}/dask_temp/{PREFIX}")), # temp dask files
         f'{OUT_DIR}/predict/predictions/{PREFIX}_test_predict_y_pred.csv', # predictions
@@ -139,8 +190,35 @@ rule run_model_predict:
         """
         # load module and env
         module purge
-        module load {params.job_module}
-        conda activate {params.job_env}
+
+        echo -e "\n--> Loading Modules on Scheduler"
+
+        if [[ "{params.gpu}" == "True" ]]; then
+            echo -e "\n--> GPU version selected"
+        else
+            echo -e "\n--> CPU version selected"
+        fi
+
+        if [[ "{params.cluster_type}" == "local" ]]; then
+            module load {params.gcc_module}
+            module load {params.cuda_module}
+
+            if [[ "{params.gpu}" == "True" ]]; then
+                echo -e "\n--> Planning LocalCUDACluster"
+                echo -e "\n################################################################################"
+                echo -e "############################# Verifying GPU support ##############################"
+                nvidia-smi
+                echo -e "################################################################################"
+                echo -e "################################################################################\n"
+            else
+                echo -e "\n--> Planning LocalCluster"
+            fi
+        else
+            echo -e "\n--> Planning distributed SLURMCluster"
+        fi
+
+        module load {params.conda_module}
+        conda activate {params.conda_env}
 
         # print node name for setting up dask dashboard
         echo -e "\n################################################################################"
@@ -156,7 +234,7 @@ rule run_model_predict:
             --in_ml {params.infile} \
             --used_cols {params.bst_col_path} \
             --bst_path {params.bst_path} \
-            --cluster distributed \
+            --cluster {params.cluster_type} \
             --n_threads_per_worker {params.threads} \
             --time_per_worker {params.time} \
             --mem_per_worker {params.mem} \
@@ -171,6 +249,10 @@ rule run_model_predict:
             --gpu {params.gpu} \
             --gpu_resources {params.gpu_resources} \
             --interface None \
+            --gcc_module {params.gcc_module} \
+            --cuda_module {params.cuda_module} \
+            --conda_module {params.conda_module} \
+            --conda_env {params.conda_env} \
             --xkey {params.xkey} \
             --ykey {params.ykey} \
             --worker_queue {params.worker_queue}

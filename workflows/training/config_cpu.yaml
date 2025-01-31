@@ -1,0 +1,67 @@
+gpu: False
+
+input:
+  data:
+    train: "/home/eadbwp2/processed_data/data_freeze/maf_0_05_clumped_r2_0_75/stability_checks/split_1/train/genotypes_with_gws_imputed_allchr_shuffled_adjusted_train.hdf5"
+    test: "/home/eadbwp2/processed_data/data_freeze/maf_0_05_clumped_r2_0_75/stability_checks/split_1/test/genotypes_with_gws_imputed_allchr_shuffled_adjusted_test.hdf5"
+
+output:
+  dir: "/home/matthew.smith/workdir2024/xgboost"
+  prefix: "cpu_stability_split_1" # run name to append to output folder
+
+cv: # worker params only use if cluster == distributed !! Not implemented 
+  folds: 3 # n folds in CV
+  iter: 50 # n iterations random search in CV
+  time: "'04_00_00'" # time per worker as HH_MM_SS
+  mem: "'32G'" # mem per worker as G
+  workers: 4 # n workers
+  cvsubsample: 5000 # size of train data to take as subsample for HP search
+  hyperparams: None # ???
+  hp_round: 0 # ??? which round of HP tuning we're on - may be redundant with snakemake
+
+refit:  # worker params only used if cluster == distributed. Resources must cover total of 640G RAM for 28k*215k train set
+  cpu_threads: 16 # must be 2x cpus-per-task in slurm config
+  time: "'00_05_00'" 
+  mem: "'5G'"
+  workers: 1
+  force_n_boosters: 1000
+  hyperparams: "/home/matthew.smith/workdir2024/xgboost/cv/clumped_075_maf_005_with_apoe/hpsearch" # path to file or directors with output from HP search
+
+predict: # worker params only use if cluster == distributed
+  cpu_threads: 16 # must be 2x cpus-per-task in slurm config
+  time: "'00_05_00'" 
+  mem: "'5G'"
+  workers: 1
+  bst_path: None # "/path/to/booster.json" path to prefit serialised boosting model. Default to output from refit if None. Put here to overwrite
+  bst_col_path: None # "/path/to/booster/columns.txt" file containing column names from model in bst. Default to output from refit if None. Put here to overwrite
+  platt_model: None # "/path/to/model.json" for the platt scale model. Default None uses model from refit. Put here to overwrite.
+
+jobs: # holds universal rules for runs
+  dask_row_chunks: 500 # size of chunks to read with dask
+  interface: None # can manually try to force ethernet, infiniband etc.
+  worker_queue: None # can manually try to force worker queue
+  xkey: 'x_adjusted' # key for accessing predictors in hdf5 files
+  ykey: 'y_adjusted' # key for accessing outcome in hdf5 files
+  seed: 123
+  gpu_resources: 'gpu:1' # specify as <resource>:<type>:<count>, where type is optional. Passed to --gres=
+  gpu_usage_threshold: 0.98 # will steal GPUs on machine if at least this fraction of memory is free
+  temp_dir: '/home/matthew.smith/workdir2024'
+  cluster_type: 'local' # local can be set but currently untested
+
+model: # holds universal rules for xgb models
+  subsample: 0.7 # size of subsample for each tree in boosting rounds. Not implemented.
+  boosters: 1000 # number of boosting rounds. Not implemented.
+  run_shap_inter: False # if True then export SHAP interaction values - v. high mem req. and some concurrency issues seen
+  xgb_model_type: "shap" # Not implemented.
+
+posthoc: # merges test set importance scores with annot; calls daxos/scoring.py on test predictions
+  annotations_file: None
+  merge_by: 'rsid'
+  model: 'both' # adjust with OLS regression , random forest or both. Must be in ["ols", "rf", "both"]
+  covar_file: '/home/eadbwp2/processed_data/data_freeze/maf_0_05_clumped_r2_0_75/covariates/iid_sex_centre_pc_covariates_formated_for_ml.txt'
+
+env:
+  gcc_module: "gcc/11.3.1/compilers" # load compiler used in building xgb
+  cuda_module: "nvidia/cuda/12.0/compilers" # load nvidia cuda module
+  conda_module: "conda/23.11-py311" # your base conda module to load on an HPC environment
+  conda_env: "daxos" # your environement to load for runs. Should be base daxos env from daxos/requirements.yaml.

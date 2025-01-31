@@ -1,9 +1,0 @@
-default-resources:
-  runtime: 30 # minutes
-  mem_mb: 30000 # mem-per-cpu * cpus-per-task
-  cpus_per_task: 1
-  tasks: 1
-  slurm_account: "eadbwp2"
-  slurm_partition: "t1b"
-
-# gpu resources - add here

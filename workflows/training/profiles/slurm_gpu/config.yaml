@@ -1,0 +1,25 @@
+default-resources: # used for the scheduler only. Worker job args set in ../config_gpu.yaml
+  runtime: 5 # minutes
+  mem_mb: 5000 # total mem as Mb. Equivalent to mem-per-cpu * cpus-per-task
+  cpus_per_task: 1
+  tasks: 1
+  slurm_account: "eadbwp2"
+  slurm_partition: "t1b"
+
+set-resources:
+  run_model_refit: # GPU line only needed if running local with GPUs
+    runtime: 5 # minutes (12 hours). Takes ~8h for 40k*215k matrix
+    mem_mb: 5000 # mem-per-cpu * cpus-per-task
+    cpus_per_task: 2 # Increase CPUs for potential parallelization
+    tasks: 1
+    slurm_account: "eadbwp2"
+    slurm_partition: "gpu"
+    slurm_extra: "'--gres=gpu:1'" # Note nested quotes needed
+  run_model_predict: # GPU line only needed if running local with GPUs
+    runtime: 5 # minutes (6 hours). Takes >3h for 40k*215k matrix
+    mem_mb: 5000 # mem-per-cpu * cpus-per-task
+    cpus_per_task: 2 # Increase CPUs for potential parallelization
+    tasks: 1
+    slurm_account: "eadbwp2"
+    slurm_partition: "gpu"
+    slurm_extra: "'--gres=gpu:1'" # Note nested quotes needed

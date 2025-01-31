@@ -14,6 +14,21 @@ def parse_bool(bool_arg):
     return bool_arg
 
 
+def force_none_if_str_empty(arg):
+    if arg is None:
+        return None
+    elif isinstance(arg, str):
+        if arg:
+            if arg.lower() == 'none':
+                return None
+            else:
+                return arg
+        else:
+            return None
+    else:
+        return arg
+
+
 def set_numpy_dtype(dtype_str):
     dtype_options = [np.float16, np.float32, np.float64]
     dtype_numpy = list(compress(dtype_options, [dtype_str.lower() == s for s in ('float16', 'float32', 'float64')]))
@@ -22,6 +37,16 @@ def set_numpy_dtype(dtype_str):
 
     return dtype_numpy[0]
 
+
+def yhat(clf, X):
+    if hasattr(clf, 'predict_proba'):
+        return clf.predict_proba(X)[:, 1]
+    elif hasattr(clf, 'decision_function'):
+        return clf.decision_function(X)
+    elif hasattr(clf, 'predict'):
+        return clf.predict(X)
+    else:
+        raise ValueError('clf has no predict attr')
 
 
 def validate_pandas_columns():

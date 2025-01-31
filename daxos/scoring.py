@@ -177,6 +177,8 @@ if __name__ == '__main__':
     if args.id != "IID":
         df = df.rename(columns={args.id: "IID"})
 
+    cov = cov.drop(columns=['FID'], errors='ignore')
+
     df = df.merge(cov, on='IID', how='inner')
     cov_list = cov.set_index('IID').columns.tolist()
 

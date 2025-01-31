@@ -4,11 +4,11 @@ sys.path.insert(0, os.path.join(os.path.expanduser('~'), 'daxos'))
 from daxos.read import read_ml, save_booster
 from daxos.explain import collect_importances, subset_predictors
 from daxos.crossvalidate import read_hp_search_results, incremental_fit_xgb, fit_dask_xgb, persist_daskdmatrix, score_model
+from daxos.distribute import spin_cluster, scale_cluster
 from daxos.utils import parse_bool
 from daxos.scale import run_cv_and_platt_scale
 import xgboost as xgb
 from dask.distributed import Client
-from daxos.distribute import spin_cluster, scale_cluster
 import dask.array as da
 import pathlib
 import joblib
@@ -18,6 +18,7 @@ import numpy as np
 import pprint
 import time
 import h5py
+import time
 
 
 def main(client, X, y, colnames, n_folds=5, increment_refit=False, row_chunks=100, out_dir=None, out_prefix=None,
@@ -25,6 +26,7 @@ def main(client, X, y, colnames, n_folds=5, increment_refit=False, row_chunks=10
          hp_search_file='', platt_scale=False, y_binary=None, score_method='AUC',
          n_booster_overide=None, gpu=True, **fit_kwargs):
 
+    time.sleep(60)
     # read CV results and assume sort order is descending only if using AUC, else ascending (e.g. for RMSE)
     best_params = read_hp_search_results(hp_search_file)
     if n_booster_overide is not None:
@@ -45,7 +47,9 @@ def main(client, X, y, colnames, n_folds=5, increment_refit=False, row_chunks=10
             incremental_n_boost_per_round, row_chunks, gpu=gpu, **fit_kwargs
         )
     else:
-        print('\nCreating DMatrix for XGB')
+        print(f"\nCreating {'DaskQuantileDMatrix' if gpu else 'DaskDMatrix'} for XGB on {'GPU' if gpu else 'CPU'}")
+        print(f'Features names being used are type {type(colnames)}, :')
+        print(colnames)
         dtrain = persist_daskdmatrix(client, X, y, feature_names=colnames, gpu=gpu)
 
         print('\nTraining...')
@@ -162,6 +166,14 @@ if __name__ == '__main__':
                         help='Specify as <resource>:<type>:<count>, where type is optional. Passed to --gres=')
     parser.add_argument('--interface', type=str, default='ib0',
                         help='Networking interface for connection between workers. Uses "lo" if --cluster is "local"')
+    parser.add_argument('--gcc_module', type=str, default='gcc/11.3.1/compilers',
+                        help='Module to load for xgboost compiler in worker node')
+    parser.add_argument('--cuda_module', type=str, default='nvidia/cuda/12.0/compilers',
+                        help='Module to load for CUDA in worker node')
+    parser.add_argument('--conda_module', type=str, default='conda/23.11-py311',
+                        help='Module to load for base conda env in worker node')
+    parser.add_argument('--conda_env', type=str, default='daxos',
+                        help='Conda env for running daxos in worker node')
     parser.add_argument('--xkey', type=str, default='x',
                         help='Key in hdf5 file for X.')
     parser.add_argument('--ykey', type=str, default='y',
@@ -172,14 +184,24 @@ if __name__ == '__main__':
                         help='N booster for non-incremental learning. Overwrites HP-tuning value. Default None.')
     args = parser.parse_args()
 
+    print("\n-->Python refit.py script started")
+
     incremental_learning, verbose, run_shap_main, run_shap_inter, gpu = [
         parse_bool(x) for x in (args.incremental_learning, args.verbose, args.run_shap_main,
                                 args.run_shap_inter, args.gpu)]
 
     interface, queue = [None if x.lower() == 'none' else x for x in (args.interface, args.worker_queue)]
 
+    worker_prologue = {
+        'gcc_module': args.gcc_module,
+        'cuda_module': args.cuda_module,
+        'conda_module': args.conda_module,
+        'conda_env': args.conda_env
+    }
+
     if gpu:
         tree_method = 'gpu_hist'
+        assert args.cluster == 'local', 'Distributed GPU training not implemented. Set cluster_type in config.yaml as local.'
     else:
         tree_method = 'hist'
 
@@ -200,18 +222,15 @@ if __name__ == '__main__':
 
     with spin_cluster(cluster_type=args.cluster, n_threads=args.n_threads_per_worker,local_dir=args.local_dir, processes=1, 
                       mem=args.mem_per_worker, walltime=args.time_per_worker, interface=interface, queue=queue, gpu=gpu,
-                      gpu_resources=args.gpu_resources) as cluster:
+                      gpu_resources=args.gpu_resources, worker_prologue=worker_prologue) as cluster:
         scale_cluster(cluster, args.cluster, args.n_workers_in_cluster, args.n_threads_per_worker, args.mem_per_worker)
         with Client(cluster) as client:
-            # print(f'Waiting to scale up to {args.n_workers_in_cluster} workers before continuing...')
-            # client.wait_for_workers(args.n_workers_in_cluster, 300)
-
             print(f'Returned client with info/address: {client}')
             with h5py.File(args.in_ml, 'r') as f:
                 X, y, rows, columns = read_ml(args.in_ml, f, row_chunks=args.row_chunk_size,
                                               x_key=args.xkey, y_key=args.ykey)
                 y_binary = da.from_array(f['y'], chunks=(args.row_chunk_size, 1))
-                column_names = columns.squeeze().to_numpy()
+                column_names = columns.squeeze().to_numpy().astype(str)
 
                 fit_kwargs = dict(zip(['n_threads', 'eval_metric', 'loss', 'verbose', 'tree_method'],
                                       [args.n_threads_per_worker, eval_metric, loss, verbose, tree_method]))
@@ -233,5 +252,5 @@ if __name__ == '__main__':
 
     t1 = time.time()
     t2 = t1 - t0
-    print(f'\nTime taken to process on CPU: '
-          f'{t2 // 3600 % 24:.2f} hours, {t2 // 60 % 60:.2f} minutes, {t2 % 60:.2f} seconds')
+    print(f"\nTime taken to process on {'GPU' if gpu else 'CPU'}: "
+          f"{t2 // 3600 % 24:.2f} hours, {t2 // 60 % 60:.2f} minutes, {t2 % 60:.2f} seconds")

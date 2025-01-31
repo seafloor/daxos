@@ -1,0 +1,17 @@
+Python version on worker:
+Python 3.10.15
+2025-01-24 14:28:23,584 - distributed.nanny - INFO -         Start Nanny at: 'tcp://10.3.10.12:45145'
+2025-01-24 14:28:28,998 - distributed.worker - INFO -       Start worker at:     tcp://10.3.10.12:45885
+2025-01-24 14:28:28,999 - distributed.worker - INFO -          Listening to:     tcp://10.3.10.12:45885
+2025-01-24 14:28:29,000 - distributed.worker - INFO -           Worker name:             SLURMCluster-0
+2025-01-24 14:28:29,002 - distributed.worker - INFO -          dashboard at:           10.3.10.12:44969
+2025-01-24 14:28:29,003 - distributed.worker - INFO - Waiting to connect to:  tcp://194.214.79.16:34631
+2025-01-24 14:28:29,004 - distributed.worker - INFO - -------------------------------------------------
+2025-01-24 14:28:29,005 - distributed.worker - INFO -               Threads:                          1
+2025-01-24 14:28:29,006 - distributed.worker - INFO -                Memory:                   0.93 GiB
+2025-01-24 14:28:29,008 - distributed.worker - INFO -       Local Directory: /tmp/dask-worker-space/worker-2quextyd
+2025-01-24 14:28:29,009 - distributed.worker - INFO - -------------------------------------------------
+2025-01-24 14:28:29,027 - distributed.worker - INFO -         Registered to:  tcp://194.214.79.16:34631
+2025-01-24 14:28:29,029 - distributed.worker - INFO - -------------------------------------------------
+2025-01-24 14:28:29,031 - distributed.core - INFO - Starting established connection to tcp://194.214.79.16:34631
+slurmstepd: error: *** JOB 1463576 ON surt-13-01 CANCELLED AT 2025-01-24T14:28:29 ***

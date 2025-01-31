@@ -97,9 +97,12 @@ if __name__ == '__main__':
         platt_scale = False
         eval_metric = args.xgb_eval_metric
         score_method = 'AUC'
-
+    
     if gpu:
-        raise NotImplementedError('GPUs not supported yet')
+        tree_method = 'gpu_hist'
+        assert args.cluster == 'local', 'Distributed GPU training not implemented. Set cluster_type in config.yaml as local.'
+    else:
+        tree_method = 'hist'
 
     t0 = time.time()
     if args.seed > 0:

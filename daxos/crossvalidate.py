@@ -57,6 +57,9 @@ def persist_daskdmatrix(client, X, y, feature_names=None, manually_map_to_worker
     if feature_names is not None:
         assert len(feature_names) == X.shape[1], \
             f'len(feature_names) of {len(feature_names)} does not match no columns in X of {X.shape}'
+        
+        if gpu:
+            feature_names = feature_names.tolist()
     
     if gpu:
         print('Persisting for GPUs - forcing dask worker scheduling rather than manually mapping')
@@ -148,7 +151,6 @@ def fit_dask_xgb(client, data, params, xgb_model=None, n_threads=1, eval_metric=
     xgb_args = {
         'verbosity': int(verbose),
         'tree_method': tree_method,
-        'nthread': n_threads,
         'single_precision_histogram': True,
         'eval_metric': eval_metric,
         'objective': loss,
@@ -183,7 +185,7 @@ def fit_one_round_cv(client, X, y, params, n_fold=5, score_method='AUC', colname
 
         print(f'Creating Dask DMatrices in CV fold number {i}')
         dtrain = persist_daskdmatrix(client, X_train, y_train, feature_names=colnames,
-                                     manually_map_to_workers=manually_map_to_worker,
+                                     manually_map_to_workers=manually_map_to_workers,
                                      gpu=gpu)
         _ = persist_daskdmatrix(client, X_test, y_test, feature_names=colnames, gpu=gpu)
 
