@@ -31,6 +31,8 @@ export PYTHONPATH=$PYTHONPATH:$(pwd)
 
 ## GPU support
 
+*Note: GPU support is experimental. I recommend running the CPU version using the preprocessing and training snakemake workflows in /workflows for now. For this, please install as above and then head to the respective workflow directories to set up any specific conda environments.*
+
 On an HPC cluster you likely don't have GPUs on the head node, so by default pip-installed xgboost will not have gpu support. This is easy to fix by building manually. The example below should be adapted to the modules available on your cluster. Note if you've already run the conda installation above then you'll need to uninstall with `conda remove xgboost`. You may need to also cleanup with `conda clean --all` and delete the python shared object for the CPU xgboost with `rm -f .conda/envs/daxos/lib/libxgboost.so` to avoid conflicts.
 
 *On the head node:*
