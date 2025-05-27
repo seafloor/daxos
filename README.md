@@ -1,5 +1,7 @@
 # DAXOS: Dask and XGBoost on SNPs
 
+[![DOI](https://zenodo.org/badge/577098629.svg)](https://doi.org/10.5281/zenodo.15526395)
+
 DAXOS is a Python library designed to efficiently run Dask and XGBoost on SNP data, particularly for use on high-performance computing (HPC) systems that use a SLURM management system. The code is optimized to reduce memory usage and is tailored for handling genetic data from PLINK files.
 
 ## Features
